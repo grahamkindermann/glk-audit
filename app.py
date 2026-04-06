@@ -18,6 +18,7 @@ import re
 import tempfile
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from report import build_pdf
 from rubric import (
@@ -459,6 +460,12 @@ def main():
         render_results()
 
     render_nav()
+
+    # Scroll to top on every page render (fixes "stuck at bottom" after Next)
+    components.html(
+        "<script>window.parent.document.querySelector('section.main').scrollTo(0, 0);</script>",
+        height=0,
+    )
 
     st.caption(f"Rubric v{RUBRIC_VERSION}")
 
