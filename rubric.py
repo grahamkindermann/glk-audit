@@ -24,8 +24,12 @@ RUBRIC_VERSION = "0.1.0"
 # MODE
 # "lead_magnet" -> scores + bands + top 3 risks only.
 # "advisory"    -> adds opportunities, written recommendations, 30/60/90 block.
+#
+# Set via environment variable AUDIT_MODE to avoid editing this file.
+# Defaults to "lead_magnet" if not set.
 # ---------------------------------------------------------------------------
-MODE = "lead_magnet"
+import os
+MODE = os.environ.get("AUDIT_MODE", "lead_magnet")
 
 # ---------------------------------------------------------------------------
 # Brand strings
