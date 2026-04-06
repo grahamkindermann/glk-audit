@@ -61,6 +61,10 @@ def init_state():
         st.session_state.current_step = 0
     if "firmographics" not in st.session_state:
         st.session_state.firmographics = {}
+    if "saved_answers" not in st.session_state:
+        st.session_state.saved_answers = {}
+    if "saved_firm" not in st.session_state:
+        st.session_state.saved_firm = {}
 
 
 def answer_key(qid):
@@ -71,7 +75,25 @@ def firm_key(fid):
     return f"firm_{fid}"
 
 
+def _snapshot():
+    """Save current-step widget values into persistent (non-widget) dicts
+    so they survive when widgets are no longer rendered."""
+    step = st.session_state.current_step
+    if 1 <= step <= len(DIMENSIONS):
+        dim = DIMENSIONS[step - 1]
+        for q in dim["questions"]:
+            v = st.session_state.get(answer_key(q["id"]))
+            if v is not None:
+                st.session_state.saved_answers[q["id"]] = v
+    elif step == 0:
+        for f in FIRMOGRAPHICS:
+            v = st.session_state.get(firm_key(f["id"]))
+            if v is not None:
+                st.session_state.saved_firm[f["id"]] = v
+
+
 def goto_step(delta):
+    _snapshot()
     st.session_state.current_step = max(
         0, min(TOTAL_STEPS - 1, st.session_state.current_step + delta)
     )
@@ -107,6 +129,12 @@ def dimension_complete(dim):
 # ---------------------------------------------------------------------------
 
 def render_firmographics():
+    # Restore previously saved firmographic answers
+    for f in FIRMOGRAPHICS:
+        k = firm_key(f["id"])
+        if k not in st.session_state and f["id"] in st.session_state.saved_firm:
+            st.session_state[k] = st.session_state.saved_firm[f["id"]]
+
     st.header("Business Context")
     st.caption("A minute of context, then the audit. Nothing on this screen is scored.")
     st.write("")
@@ -139,6 +167,12 @@ def render_firmographics():
 # ---------------------------------------------------------------------------
 
 def render_dimension(dim):
+    # Restore previously saved answers so Back-nav preserves selections
+    for q in dim["questions"]:
+        k = answer_key(q["id"])
+        if k not in st.session_state and q["id"] in st.session_state.saved_answers:
+            st.session_state[k] = st.session_state.saved_answers[q["id"]]
+
     st.header(dim["name"])
     if dim.get("summary"):
         st.caption(dim["summary"])
@@ -181,7 +215,9 @@ def render_question(q):
 # ---------------------------------------------------------------------------
 
 def collect_answers():
-    answers = {}
+    _snapshot()  # capture the last dimension before scoring
+    answers = dict(st.session_state.saved_answers)
+    # Also pick up any current-step widget values (belt-and-suspenders)
     for d in DIMENSIONS:
         for q in d["questions"]:
             v = st.session_state.get(answer_key(q["id"]))
@@ -191,9 +227,11 @@ def collect_answers():
 
 
 def collect_firmographics():
-    firm = {}
+    firm = dict(st.session_state.saved_firm)
     for f in FIRMOGRAPHICS:
-        firm[f["id"]] = st.session_state.get(firm_key(f["id"]))
+        v = st.session_state.get(firm_key(f["id"]))
+        if v is not None:
+            firm[f["id"]] = v
     return firm
 
 
@@ -338,6 +376,8 @@ def _pdf_filename(firm):
 def _reset_state():
     for key in list(st.session_state.keys()):
         del st.session_state[key]
+    st.session_state.saved_answers = {}
+    st.session_state.saved_firm = {}
 
 
 # ---------------------------------------------------------------------------
