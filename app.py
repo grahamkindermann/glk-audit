@@ -461,19 +461,20 @@ def main():
 
     render_nav()
 
-    # Scroll to top on every page render (fixes "stuck at bottom" after Next)
+    # Scroll to top on every page render (fixes "stuck at bottom" after Next).
+    # The Streamlit app lives inside a nested iframe on Cloud; the actual
+    # scrollable container is <section data-testid="stMain"> in the parent doc.
     components.html(
-        """<script>
-        const doc = window.parent.document;
-        const targets = [
-            doc.querySelector('[data-testid="stAppViewContainer"]'),
-            doc.querySelector('section.main'),
-            doc.querySelector('.main'),
-            doc.querySelector('[data-testid="ScrollToBottomContainer"]'),
-        ];
-        targets.forEach(t => { if (t) t.scrollTop = 0; });
-        window.parent.scrollTo(0, 0);
-        </script>""",
+        """
+        <script>
+        setTimeout(function() {
+            try {
+                var main = window.parent.document.querySelector('[data-testid="stMain"]');
+                if (main) { main.scrollTop = 0; }
+            } catch(e) {}
+        }, 100);
+        </script>
+        """,
         height=0,
     )
 
