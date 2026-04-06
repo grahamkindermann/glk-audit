@@ -463,7 +463,17 @@ def main():
 
     # Scroll to top on every page render (fixes "stuck at bottom" after Next)
     components.html(
-        "<script>window.parent.document.querySelector('section.main').scrollTo(0, 0);</script>",
+        """<script>
+        const doc = window.parent.document;
+        const targets = [
+            doc.querySelector('[data-testid="stAppViewContainer"]'),
+            doc.querySelector('section.main'),
+            doc.querySelector('.main'),
+            doc.querySelector('[data-testid="ScrollToBottomContainer"]'),
+        ];
+        targets.forEach(t => { if (t) t.scrollTop = 0; });
+        window.parent.scrollTo(0, 0);
+        </script>""",
         height=0,
     )
 
