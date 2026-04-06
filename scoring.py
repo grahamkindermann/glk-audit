@@ -291,6 +291,7 @@ def select_top_risks(dimension_results, dimensions=None, limit=3, max_per_dimens
                 "score": qs["score"],
                 "weight": qs["weight"],
                 "risk_copy": q_meta.get("risk_copy", ""),
+                "recommendation": q_meta.get("recommendation", ""),
             })
 
     candidates.sort(key=lambda c: (-((100.0 - c["score"]) * c["weight"]), c["score"]))
@@ -352,6 +353,76 @@ def select_top_opportunities(
 
 
 # ---------------------------------------------------------------------------
+# 30/60/90 action plan (advisory mode)
+# ---------------------------------------------------------------------------
+
+def build_action_plan(risks, opportunities):
+    """Build a 30/60/90 day action plan from risks and opportunities.
+
+    30-day: Quick wins from top risks (immediate, high-severity items).
+    60-day: Systemic fixes from remaining risks and high-weight opportunities.
+    90-day: Strategic initiatives from opportunities.
+
+    Returns:
+        {
+            "30_day": [{"dimension_name", "action"}],
+            "60_day": [{"dimension_name", "action"}],
+            "90_day": [{"dimension_name", "action"}],
+        }
+    """
+    plan = {"30_day": [], "60_day": [], "90_day": []}
+
+    # 30-day: top 3 risks with recommendations → quick wins
+    for r in risks[:3]:
+        rec = r.get("recommendation", "")
+        if rec:
+            plan["30_day"].append({
+                "dimension_name": r["dimension_name"],
+                "action": rec,
+            })
+        else:
+            plan["30_day"].append({
+                "dimension_name": r["dimension_name"],
+                "action": r.get("risk_copy", "Address this risk area."),
+            })
+
+    # 60-day: remaining risks (if any beyond top 3) + first opportunity
+    remaining_risks = risks[3:]
+    for r in remaining_risks[:2]:
+        rec = r.get("recommendation", r.get("risk_copy", ""))
+        if rec:
+            plan["60_day"].append({
+                "dimension_name": r["dimension_name"],
+                "action": rec,
+            })
+    if opportunities:
+        o = opportunities[0]
+        rec = o.get("recommendation", o.get("opportunity_copy", ""))
+        if rec:
+            plan["60_day"].append({
+                "dimension_name": o["dimension_name"],
+                "action": rec,
+            })
+
+    # 90-day: remaining opportunities → strategic initiatives
+    for o in opportunities[1:3]:
+        rec = o.get("recommendation", o.get("opportunity_copy", ""))
+        if rec:
+            plan["90_day"].append({
+                "dimension_name": o["dimension_name"],
+                "action": rec,
+            })
+
+    # If 60-day or 90-day are empty, fill from the other bucket
+    if not plan["60_day"] and len(plan["30_day"]) > 1:
+        plan["60_day"].append(plan["30_day"].pop())
+    if not plan["90_day"] and len(plan["60_day"]) > 1:
+        plan["90_day"].append(plan["60_day"].pop())
+
+    return plan
+
+
+# ---------------------------------------------------------------------------
 # End-to-end convenience
 # ---------------------------------------------------------------------------
 
@@ -368,6 +439,7 @@ def run_audit(answers, dimensions=None):
     overall = score_overall(dim_results, norm_weights)
     risks = select_top_risks(dim_results, dims)
     opportunities = select_top_opportunities(dim_results, dims, risks=risks)
+    action_plan = build_action_plan(risks, opportunities)
 
     return {
         "overall": overall,
@@ -375,4 +447,5 @@ def run_audit(answers, dimensions=None):
         "normalized_weights": norm_weights,
         "risks": risks,
         "opportunities": opportunities,
+        "action_plan": action_plan,
     }

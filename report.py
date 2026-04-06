@@ -372,31 +372,69 @@ def _opportunities_section(audit_result, styles):
 
 def _recommendations_section(audit_result, styles):
     elements = []
-    opps = audit_result["opportunities"]
-    if not any(o.get("recommendation") for o in opps):
+    # Gather recommendations from both risks and opportunities
+    steps = []
+    for r in audit_result["risks"]:
+        rec = r.get("recommendation", "")
+        if rec:
+            steps.append({"dimension_name": r["dimension_name"], "recommendation": rec})
+    for o in audit_result["opportunities"]:
+        rec = o.get("recommendation", "")
+        if rec:
+            steps.append({"dimension_name": o["dimension_name"], "recommendation": rec})
+    if not steps:
         return elements
     elements.append(Spacer(1, 0.15 * inch))
     elements.append(Paragraph("Recommended Next Steps", styles["h2"]))
-    for i, o in enumerate(opps, 1):
-        rec = o.get("recommendation")
-        if not rec:
-            continue
+    for i, s in enumerate(steps, 1):
         elements.append(Paragraph(
-            f"{i}. {_esc(o['dimension_name'])}",
+            f"{i}. {_esc(s['dimension_name'])}",
             styles["body_bold"],
         ))
-        elements.append(Paragraph(_esc(rec), styles["body"]))
+        elements.append(Paragraph(_esc(s["recommendation"]), styles["body"]))
         elements.append(Spacer(1, 0.1 * inch))
     return elements
 
 
 # ---------------------------------------------------------------------------
-# CTA section (lead magnet only)
+# 30/60/90 action plan (advisory mode)
 # ---------------------------------------------------------------------------
 
-def _cta_section(styles):
+def _action_plan_section(audit_result, styles):
     elements = []
-    cta = CTA.get("lead_magnet", {})
+    action_plan = audit_result.get("action_plan")
+    if not action_plan:
+        return elements
+
+    elements.append(Spacer(1, 0.2 * inch))
+    elements.append(Paragraph("30 / 60 / 90 Day Action Plan", styles["h1"]))
+
+    for phase, label in [("30_day", "30 Days \u2014 Quick Wins"),
+                          ("60_day", "60 Days \u2014 Systemic Fixes"),
+                          ("90_day", "90 Days \u2014 Strategic Initiatives")]:
+        items = action_plan.get(phase, [])
+        elements.append(Spacer(1, 0.1 * inch))
+        elements.append(Paragraph(_esc(label), styles["h2"]))
+        if not items:
+            elements.append(Paragraph("No items for this phase.", styles["body"]))
+        else:
+            for item in items:
+                elements.append(Paragraph(
+                    f"\u2022  <b>{_esc(item['dimension_name'])}</b>: {_esc(item['action'])}",
+                    styles["body"],
+                ))
+                elements.append(Spacer(1, 0.06 * inch))
+
+    return elements
+
+
+# ---------------------------------------------------------------------------
+# CTA section
+# ---------------------------------------------------------------------------
+
+def _cta_section(mode, styles):
+    elements = []
+    cta = CTA.get(mode, {})
     if not cta:
         return elements
 
@@ -512,8 +550,11 @@ def build_pdf(audit_result, firmographics, output_path, mode=None):
     if use_mode == "advisory":
         story.extend(_opportunities_section(audit_result, styles))
         story.extend(_recommendations_section(audit_result, styles))
+        story.append(PageBreak())
+        story.extend(_action_plan_section(audit_result, styles))
+        story.extend(_cta_section(use_mode, styles))
     else:
-        story.extend(_cta_section(styles))
+        story.extend(_cta_section(use_mode, styles))
 
     # Back page
     story.append(PageBreak())

@@ -11,7 +11,7 @@ Run from inside glk-audit/:
 """
 
 from rubric import DIMENSIONS, RUBRIC_VERSION
-from scoring import run_audit
+from scoring import run_audit, build_action_plan
 
 
 def build_synthetic_answers():
@@ -161,6 +161,106 @@ def test_opportunities_path():
     print("OPPORTUNITIES PATH ASSERTIONS PASSED")
 
 
+def test_action_plan():
+    """Verify the 30/60/90 action plan is well-formed."""
+    answers = build_synthetic_answers()
+    result = run_audit(answers)
+    plan = result["action_plan"]
+
+    assert "30_day" in plan, "action_plan missing 30_day"
+    assert "60_day" in plan, "action_plan missing 60_day"
+    assert "90_day" in plan, "action_plan missing 90_day"
+
+    # 30-day should have items (we always have risks in synthetic data)
+    assert len(plan["30_day"]) > 0, "30_day plan is empty"
+
+    # Every item must have dimension_name and action
+    for phase in ["30_day", "60_day", "90_day"]:
+        for item in plan[phase]:
+            assert item.get("dimension_name"), f"{phase} item missing dimension_name"
+            assert item.get("action"), f"{phase} item missing action"
+
+    print()
+    print("=" * 64)
+    print("30/60/90 ACTION PLAN TEST")
+    print("=" * 64)
+    for phase, label in [("30_day", "30 Days"), ("60_day", "60 Days"), ("90_day", "90 Days")]:
+        print(f"\n{label}:")
+        for item in plan[phase]:
+            print(f"  - [{item['dimension_name']}] {item['action'][:80]}...")
+    print()
+    print("ACTION PLAN ASSERTIONS PASSED")
+
+
+def test_risks_carry_recommendation():
+    """Verify that risks include recommendation text from rubric."""
+    answers = build_synthetic_answers()
+    result = run_audit(answers)
+    risks = result["risks"]
+
+    # At least one risk should have a recommendation (all rubric questions do)
+    recs = [r for r in risks if r.get("recommendation")]
+    assert len(recs) > 0, "no risks carry recommendation text"
+
+    print()
+    print("=" * 64)
+    print("RISKS RECOMMENDATION TEST")
+    print("=" * 64)
+    for r in risks:
+        has_rec = "YES" if r.get("recommendation") else "NO"
+        print(f"  {r['question_id']}: recommendation={has_rec}")
+    print()
+    print("RISKS RECOMMENDATION ASSERTIONS PASSED")
+
+
+def test_insufficient_guardrail():
+    """Verify that 3+ N/A dimensions produce insufficient results."""
+    # Answer only one dimension, leave the rest as N/A
+    answers = {}
+    # Answer all personnel questions (dimension 0)
+    likert_i = 0
+    yesno_i = 0
+    for q in DIMENSIONS[0]["questions"]:
+        if q["type"] == "likert":
+            answers[q["id"]] = 4 if likert_i % 2 == 0 else 2
+            likert_i += 1
+        elif q["type"] == "yesno":
+            answers[q["id"]] = "Yes" if yesno_i % 2 == 0 else "No"
+            yesno_i += 1
+
+    # All other dimensions get N/A
+    for d in DIMENSIONS[1:]:
+        for q in d["questions"]:
+            answers[q["id"]] = "N/A"
+
+    result = run_audit(answers)
+    insufficient_count = sum(
+        1 for d in result["dimensions"].values() if d["insufficient"]
+    )
+    assert insufficient_count >= 3, (
+        f"expected 3+ insufficient dimensions, got {insufficient_count}"
+    )
+
+    # Personnel should NOT be insufficient
+    assert not result["dimensions"]["personnel"]["insufficient"], (
+        "personnel should not be insufficient"
+    )
+
+    print()
+    print("=" * 64)
+    print("INSUFFICIENT GUARDRAIL TEST")
+    print("=" * 64)
+    print(f"insufficient dimensions: {insufficient_count}")
+    for dim_id, dim in result["dimensions"].items():
+        status = "INSUFFICIENT" if dim["insufficient"] else f"score={dim['score']:.1f}"
+        print(f"  {dim['name']:<22} {status}")
+    print()
+    print("INSUFFICIENT GUARDRAIL ASSERTIONS PASSED")
+
+
 if __name__ == "__main__":
     main()
     test_opportunities_path()
+    test_action_plan()
+    test_risks_carry_recommendation()
+    test_insufficient_guardrail()

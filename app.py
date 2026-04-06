@@ -247,6 +247,15 @@ def render_results():
 
     result = run_audit(answers)
 
+    # Incomplete-submission guardrail: if 3+ dimensions lack data,
+    # show a warning instead of the full report.
+    insufficient_dims = [
+        d for d in result["dimensions"].values() if d["insufficient"]
+    ]
+    if len(insufficient_dims) >= 3:
+        _render_incomplete_warning(insufficient_dims)
+        return
+
     st.header("Results")
     if MODE == "advisory":
         company = (firm.get("company_name") or "").strip() or "your business"
@@ -259,9 +268,31 @@ def render_results():
 
     if MODE == "advisory":
         _render_opportunities(result["opportunities"])
+        _render_recommendations(result["risks"], result["opportunities"])
+        _render_action_plan(result["action_plan"])
 
     _render_cta()
     _render_downloads(result, firm)
+
+
+def _render_incomplete_warning(insufficient_dims):
+    """Show a warning when too many dimensions lack sufficient data."""
+    st.header("Incomplete Submission")
+    st.warning(
+        f"{len(insufficient_dims)} of 6 dimensions have insufficient data to score. "
+        "Please go back and answer more questions to receive your full report."
+    )
+    st.write("")
+    st.subheader("Dimensions needing more answers")
+    for d in insufficient_dims:
+        st.markdown(f"- **{d['name']}**")
+    st.write("")
+    if st.button("Go back and complete", type="primary", use_container_width=True):
+        # Jump to the first incomplete dimension (step 1-6)
+        for i, dim in enumerate(DIMENSIONS):
+            if dim["id"] in {d["id"] for d in insufficient_dims}:
+                st.session_state.current_step = i + 1
+                st.rerun()
 
 
 def _render_overall(overall):
@@ -313,6 +344,43 @@ def _render_opportunities(opportunities):
         st.markdown(o["opportunity_copy"])
         if o.get("recommendation"):
             st.caption(f"Next step: {o['recommendation']}")
+        st.write("")
+
+
+def _render_recommendations(risks, opportunities):
+    """Render a consolidated Recommended Next Steps section for advisory mode."""
+    # Gather recommendations from both risks and opportunities
+    steps = []
+    for r in risks:
+        rec = r.get("recommendation", "")
+        if rec:
+            steps.append({"dimension": r["dimension_name"], "text": rec})
+    for o in opportunities:
+        rec = o.get("recommendation", "")
+        if rec:
+            steps.append({"dimension": o["dimension_name"], "text": rec})
+    if not steps:
+        return
+    st.subheader("Recommended Next Steps")
+    for i, s in enumerate(steps, 1):
+        st.markdown(f"**{i}. {s['dimension']}**")
+        st.markdown(s["text"])
+        st.write("")
+
+
+def _render_action_plan(action_plan):
+    """Render the 30/60/90 day action plan for advisory mode."""
+    st.subheader("30 / 60 / 90 Day Action Plan")
+    for phase, label in [("30_day", "30 Days — Quick Wins"),
+                          ("60_day", "60 Days — Systemic Fixes"),
+                          ("90_day", "90 Days — Strategic Initiatives")]:
+        items = action_plan.get(phase, [])
+        st.markdown(f"**{label}**")
+        if not items:
+            st.caption("No items for this phase.")
+        else:
+            for item in items:
+                st.markdown(f"- **{item['dimension_name']}**: {item['action']}")
         st.write("")
 
 
