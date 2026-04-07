@@ -22,6 +22,7 @@ import streamlit.components.v1 as components
 
 from report import build_pdf
 from rubric import (
+    BENCHMARKS,
     BRAND,
     CTA,
     DIMENSIONS,
@@ -207,6 +208,29 @@ def render_question(q):
             index=None,
             label_visibility="collapsed",
         )
+    elif q["type"] in ("number", "percent"):
+        suffix = " (%)" if q["type"] == "percent" else ""
+        st.number_input(
+            label=f"{q['id']}{suffix}",
+            min_value=0.0 if q["type"] == "percent" else 0,
+            step=0.1 if q["type"] == "percent" else 1,
+            key=k,
+            value=None,
+            placeholder="Enter a number",
+            label_visibility="collapsed",
+        )
+        # Show benchmark caption if industry is selected
+        industry = (st.session_state.get(firm_key("industry"))
+                    or st.session_state.saved_firm.get("industry"))
+        if industry:
+            bm = BENCHMARKS.get((industry, q["id"]))
+            if bm:
+                lib = q.get("lower_is_better", False)
+                best_label = "Top quartile" if lib else "Top quartile"
+                st.caption(
+                    f"Industry median: {bm['p50']} · "
+                    f"{best_label}: {bm['p25'] if lib else bm['p75']}"
+                )
 
     st.write("")
 
@@ -245,7 +269,8 @@ def render_results():
     firm = collect_firmographics()
     st.session_state.firmographics = firm
 
-    result = run_audit(answers)
+    industry = firm.get("industry")
+    result = run_audit(answers, industry=industry)
 
     # Incomplete-submission guardrail: if 3+ dimensions lack data,
     # show a warning instead of the full report.
@@ -267,12 +292,15 @@ def render_results():
     _render_risks(result["risks"])
 
     if MODE == "advisory":
+        _render_benchmark_comparison(answers, industry)
         _render_opportunities(result["opportunities"])
         _render_recommendations(result["risks"], result["opportunities"])
         _render_action_plan(result["action_plan"])
+    elif industry:
+        _render_benchmark_comparison(answers, industry)
 
     _render_cta()
-    _render_downloads(result, firm)
+    _render_downloads(result, firm, answers)
 
 
 def _render_incomplete_warning(insufficient_dims):
@@ -347,6 +375,59 @@ def _render_opportunities(opportunities):
         st.write("")
 
 
+def _render_benchmark_comparison(answers, industry):
+    """Show a 'How You Compare' table for quantitative inputs vs benchmarks."""
+    if not industry:
+        return
+    rows = []
+    for dim in DIMENSIONS:
+        for q in dim["questions"]:
+            if q["type"] not in ("number", "percent"):
+                continue
+            val = answers.get(q["id"])
+            if val is None or val == "N/A":
+                continue
+            bm = BENCHMARKS.get((industry, q["id"]))
+            if not bm:
+                continue
+            lib = q.get("lower_is_better", False)
+            try:
+                v = float(val)
+            except (TypeError, ValueError):
+                continue
+            if lib:
+                if v <= bm["p25"]:
+                    grade = "Above p75"
+                elif v <= bm["p50"]:
+                    grade = "Above median"
+                elif v <= bm["p75"]:
+                    grade = "Below median"
+                else:
+                    grade = "Below p25"
+            else:
+                if v >= bm["p75"]:
+                    grade = "Above p75"
+                elif v >= bm["p50"]:
+                    grade = "Above median"
+                elif v >= bm["p25"]:
+                    grade = "Below median"
+                else:
+                    grade = "Below p25"
+            suffix = "%" if q["type"] == "percent" else ""
+            rows.append({
+                "Metric": q["text"],
+                "Your Value": f"{v:g}{suffix}",
+                "Median": f"{bm['p50']}{suffix}",
+                "Top Quartile": f"{bm['p25'] if lib else bm['p75']}{suffix}",
+                "Standing": grade,
+            })
+    if not rows:
+        return
+    st.subheader("How You Compare")
+    st.caption(f"Benchmarks for {industry}")
+    st.table(rows)
+
+
 def _render_recommendations(risks, opportunities):
     """Render a consolidated Recommended Next Steps section for advisory mode."""
     # Gather recommendations from both risks and opportunities
@@ -396,9 +477,9 @@ def _render_cta():
         st.markdown(f"[{cta['secondary_label']}]({cta['secondary_url']})")
 
 
-def _render_downloads(result, firm):
+def _render_downloads(result, firm, answers):
     st.markdown("---")
-    pdf_bytes = _build_pdf_bytes(result, firm)
+    pdf_bytes = _build_pdf_bytes(result, firm, answers)
     filename = _pdf_filename(firm)
 
     col1, col2 = st.columns(2)
@@ -420,13 +501,13 @@ def _render_downloads(result, firm):
         )
 
 
-def _build_pdf_bytes(result, firm):
+def _build_pdf_bytes(result, firm, answers):
     """Render the PDF to a tempfile, read it back, clean up, return bytes."""
     tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
     tmp_path = tmp.name
     tmp.close()
     try:
-        build_pdf(result, firm, tmp_path)
+        build_pdf(result, firm, tmp_path, answers=answers)
         with open(tmp_path, "rb") as f:
             return f.read()
     finally:

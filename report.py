@@ -38,6 +38,7 @@ from reportlab.platypus import (  # noqa: E402
 
 from rubric import (  # noqa: E402
     BAND_NARRATIVE,
+    BENCHMARKS,
     BRAND,
     CTA,
     DIMENSIONS,
@@ -397,6 +398,102 @@ def _recommendations_section(audit_result, styles):
 
 
 # ---------------------------------------------------------------------------
+# How You Compare (benchmark table)
+# ---------------------------------------------------------------------------
+
+BENCHMARK_GREEN = HexColor("#2E5D3A")
+BENCHMARK_YELLOW = HexColor("#8B7A2E")
+BENCHMARK_RED = HexColor("#8B2E2E")
+
+def _benchmark_section(answers, industry, styles):
+    elements = []
+    if not industry or not answers:
+        return elements
+
+    rows_data = []
+    for dim in DIMENSIONS:
+        for q in dim["questions"]:
+            if q["type"] not in ("number", "percent"):
+                continue
+            val = answers.get(q["id"])
+            if val is None or val == "N/A":
+                continue
+            bm = BENCHMARKS.get((industry, q["id"]))
+            if not bm:
+                continue
+            try:
+                v = float(val)
+            except (TypeError, ValueError):
+                continue
+            lib = q.get("lower_is_better", False)
+            suffix = "%" if q["type"] == "percent" else ""
+            if lib:
+                if v <= bm["p25"]:
+                    grade, color = "Top quartile", BENCHMARK_GREEN
+                elif v <= bm["p50"]:
+                    grade, color = "Above median", BENCHMARK_GREEN
+                elif v <= bm["p75"]:
+                    grade, color = "Below median", BENCHMARK_YELLOW
+                else:
+                    grade, color = "Bottom quartile", BENCHMARK_RED
+            else:
+                if v >= bm["p75"]:
+                    grade, color = "Top quartile", BENCHMARK_GREEN
+                elif v >= bm["p50"]:
+                    grade, color = "Above median", BENCHMARK_GREEN
+                elif v >= bm["p25"]:
+                    grade, color = "Below median", BENCHMARK_YELLOW
+                else:
+                    grade, color = "Bottom quartile", BENCHMARK_RED
+            rows_data.append((q["text"], f"{v:g}{suffix}",
+                              f"{bm['p50']}{suffix}",
+                              f"{bm['p25'] if lib else bm['p75']}{suffix}",
+                              grade, color))
+
+    if not rows_data:
+        return elements
+
+    elements.append(Spacer(1, 0.2 * inch))
+    elements.append(Paragraph("How You Compare", styles["h1"]))
+    elements.append(Paragraph(
+        f"Benchmarks for {_esc(industry)}", styles["body"]))
+    elements.append(Spacer(1, 0.1 * inch))
+
+    header = ["Metric", "Yours", "Median", "Top Quartile", "Standing"]
+    tbl_rows = [header]
+    for metric, yours, med, top, grade, _color in rows_data:
+        tbl_rows.append([metric, yours, med, top, grade])
+
+    col_widths = [2.5 * inch, 0.8 * inch, 0.8 * inch, 1.0 * inch, 1.2 * inch]
+    tbl = Table(tbl_rows, colWidths=col_widths)
+
+    style_commands = [
+        ("FONTNAME",    (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME",    (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE",    (0, 0), (-1, -1), 9),
+        ("TEXTCOLOR",   (0, 0), (-1, 0), NAVY),
+        ("TEXTCOLOR",   (0, 1), (-1, -1), CHARCOAL),
+        ("ALIGN",       (1, 0), (-1, -1), "CENTER"),
+        ("ALIGN",       (0, 0), (0, -1), "LEFT"),
+        ("LINEBELOW",   (0, 0), (-1, 0), 1.0, NAVY),
+        ("LINEBELOW",   (0, 1), (-1, -2), 0.25, RULE_GRAY),
+        ("TOPPADDING",  (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+    ]
+
+    # Color-code the "Standing" column
+    for i, (_m, _y, _med, _t, _g, color) in enumerate(rows_data):
+        row_idx = i + 1
+        style_commands.append(("TEXTCOLOR", (4, row_idx), (4, row_idx), color))
+
+    tbl.setStyle(TableStyle(style_commands))
+    elements.append(tbl)
+    return elements
+
+
+# ---------------------------------------------------------------------------
 # 30/60/90 action plan (advisory mode)
 # ---------------------------------------------------------------------------
 
@@ -504,18 +601,20 @@ def _back_page(styles):
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def build_pdf(audit_result, firmographics, output_path, mode=None):
+def build_pdf(audit_result, firmographics, output_path, mode=None, answers=None):
     """Build the audit PDF.
 
     audit_result:   dict returned by scoring.run_audit()
     firmographics:  dict from Streamlit session_state.firmographics
     output_path:    str or Path; PDF written here
     mode:           "lead_magnet" | "advisory" | None (defaults to rubric.MODE)
+    answers:        flat {question_id: answer} dict (for benchmark comparison)
 
     Returns: output_path (for chaining).
     """
     use_mode = mode if mode is not None else DEFAULT_MODE
     firm = firmographics or {}
+    answers = answers or {}
 
     doc = SimpleDocTemplate(
         str(output_path),
@@ -546,6 +645,13 @@ def build_pdf(audit_result, firmographics, output_path, mode=None):
     # Risks
     story.extend(_risks_section(audit_result, styles))
 
+    # Benchmark comparison (shown in both modes when industry is available)
+    industry = firm.get("industry")
+    bm_elements = _benchmark_section(answers, industry, styles)
+    if bm_elements:
+        story.append(PageBreak())
+        story.extend(bm_elements)
+
     # Mode-dependent tail
     if use_mode == "advisory":
         story.extend(_opportunities_section(audit_result, styles))
@@ -573,20 +679,24 @@ if __name__ == "__main__":
     from test_scoring import build_synthetic_answers
 
     answers = build_synthetic_answers()
-    result = run_audit(answers)
+    industry = "Professional Services"
+    result = run_audit(answers, industry=industry)
 
     # Representative firmographics for the sample. Not real.
     sample_firm = {
         "company_name": "Acme Industrial Services",
-        "revenue_band": "$5–10M",
+        "revenue_band": "$5–20M",
+        "ebitda_margin": 18,
         "employees": 42,
-        "industry": "Commercial HVAC",
+        "industry": industry,
         "years": 12,
         "owner_hours": 55,
     }
 
-    build_pdf(result, sample_firm, "sample_lead_magnet.pdf", mode="lead_magnet")
+    build_pdf(result, sample_firm, "sample_lead_magnet.pdf",
+              mode="lead_magnet", answers=answers)
     print("wrote sample_lead_magnet.pdf")
 
-    build_pdf(result, sample_firm, "sample_advisory.pdf", mode="advisory")
+    build_pdf(result, sample_firm, "sample_advisory.pdf",
+              mode="advisory", answers=answers)
     print("wrote sample_advisory.pdf")

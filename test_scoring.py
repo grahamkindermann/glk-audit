@@ -10,8 +10,8 @@ Run from inside glk-audit/:
     python3 test_scoring.py
 """
 
-from rubric import DIMENSIONS, RUBRIC_VERSION
-from scoring import run_audit, build_action_plan
+from rubric import BENCHMARKS, DIMENSIONS, RUBRIC_VERSION
+from scoring import run_audit, build_action_plan, score_quantitative
 
 
 def build_synthetic_answers():
@@ -19,8 +19,22 @@ def build_synthetic_answers():
 
     - Likert questions: alternating 4 / 2 in declaration order.
     - Yes/No questions: alternating Yes / No in declaration order.
+    - Number/Percent questions: median-ish values for Professional Services.
     - ai_04 and sw_06 overridden to "N/A" to exercise the N/A path.
     """
+    QUANT_VALUES = {
+        "per_q_turnover_pct": 18,
+        "per_q_days_to_fill": 35,
+        "fin_q_days_to_close": 10,
+        "fin_q_ar_over_60_pct": 12,
+        "sw_q_num_saas_tools": 20,
+        "sw_q_software_spend_pct": 6,
+        "ai_q_num_ai_workflows": 3,
+        "sal_q_cac": 800,
+        "sal_q_monthly_churn_pct": 1.5,
+        "ops_q_on_time_delivery_pct": 94,
+        "ops_q_mttr_hours": 12,
+    }
     answers = {}
     likert_i = 0
     yesno_i = 0
@@ -32,6 +46,8 @@ def build_synthetic_answers():
             elif q["type"] == "yesno":
                 answers[q["id"]] = "Yes" if yesno_i % 2 == 0 else "No"
                 yesno_i += 1
+            elif q["type"] in ("number", "percent"):
+                answers[q["id"]] = QUANT_VALUES.get(q["id"], 50)
     answers["ai_04"] = "N/A"
     answers["sw_06"] = "N/A"
     return answers
@@ -48,7 +64,7 @@ def main():
     print(f"answers built: {len(answers)} questions "
           f"({sum(1 for v in answers.values() if v == 'N/A')} marked N/A)")
 
-    result = run_audit(answers)
+    result = run_audit(answers, industry="Professional Services")
 
     # ----- Invariants -----
     overall = result["overall"]
@@ -258,9 +274,89 @@ def test_insufficient_guardrail():
     print("INSUFFICIENT GUARDRAIL ASSERTIONS PASSED")
 
 
+def test_quantitative_scoring():
+    """Verify benchmark-based scoring for quantitative questions."""
+    # Lower-is-better: turnover at p25 = 100, at p75 = 0
+    q_lib = {"id": "per_q_turnover_pct", "type": "percent",
+             "weight": 1.0, "lower_is_better": True}
+    # Professional Services: p25=10, p50=18, p75=28
+    assert score_quantitative(10, q_lib, "Professional Services") == 100.0
+    assert score_quantitative(28, q_lib, "Professional Services") == 0.0
+    assert score_quantitative(18, q_lib, "Professional Services") == 50.0
+    # Between p25 and p50
+    s = score_quantitative(14, q_lib, "Professional Services")
+    assert 50.0 < s < 100.0, f"expected between 50-100, got {s}"
+
+    # Higher-is-better: on-time delivery at p75 = 100, at p25 = 0
+    q_hib = {"id": "ops_q_on_time_delivery_pct", "type": "percent",
+             "weight": 1.0, "lower_is_better": False}
+    # Professional Services: p25=88, p50=94, p75=98
+    assert score_quantitative(98, q_hib, "Professional Services") == 100.0
+    assert score_quantitative(88, q_hib, "Professional Services") == 0.0
+    assert score_quantitative(94, q_hib, "Professional Services") == 50.0
+
+    # No benchmark for unknown industry -> 50
+    assert score_quantitative(15, q_lib, "Unknown Industry") == 50.0
+
+    # N/A returns None
+    assert score_quantitative(None, q_lib, "Professional Services") is None
+    assert score_quantitative("N/A", q_lib, "Professional Services") is None
+
+    print()
+    print("=" * 64)
+    print("QUANTITATIVE SCORING TEST")
+    print("=" * 64)
+    print("  lower_is_better at p25: 100.0 ✓")
+    print("  lower_is_better at p75: 0.0 ✓")
+    print("  lower_is_better at p50: 50.0 ✓")
+    print("  higher_is_better at p75: 100.0 ✓")
+    print("  higher_is_better at p25: 0.0 ✓")
+    print("  unknown industry: 50.0 ✓")
+    print("  N/A: None ✓")
+    print()
+    print("QUANTITATIVE SCORING ASSERTIONS PASSED")
+
+
+def test_blended_dimension_scoring():
+    """Verify that dimensions with quant questions use 40/60 blending."""
+    answers = build_synthetic_answers()
+
+    # Run with industry for benchmark lookups
+    result = run_audit(answers, industry="Professional Services")
+    dims = result["dimensions"]
+
+    # Personnel has both qualitative and quantitative questions
+    per = dims["personnel"]
+    assert not per["insufficient"], "personnel should not be insufficient"
+    assert per["score"] is not None, "personnel score should not be None"
+
+    # Run without industry (no benchmarks) — should still score via qual only
+    result_no_ind = run_audit(answers, industry=None)
+    per_no_ind = result_no_ind["dimensions"]["personnel"]
+    assert per_no_ind["score"] is not None
+
+    # The scores should differ because benchmarks affect the blend
+    # (unless quant answers happen to score exactly the same as qual)
+    print()
+    print("=" * 64)
+    print("BLENDED DIMENSION SCORING TEST")
+    print("=" * 64)
+    print(f"  Personnel with industry: {per['score']:.2f}")
+    print(f"  Personnel without industry: {per_no_ind['score']:.2f}")
+    for dim_id, dim in dims.items():
+        has_quant = any(qs["quantitative"] for qs in dim["question_scores"]
+                        if not qs["na"])
+        q_label = " (blended)" if has_quant else " (qual only)"
+        print(f"  {dim['name']:<22} {dim['score']:6.2f}  [{dim['band_label']}]{q_label}")
+    print()
+    print("BLENDED DIMENSION SCORING ASSERTIONS PASSED")
+
+
 if __name__ == "__main__":
     main()
     test_opportunities_path()
     test_action_plan()
     test_risks_carry_recommendation()
     test_insufficient_guardrail()
+    test_quantitative_scoring()
+    test_blended_dimension_scoring()

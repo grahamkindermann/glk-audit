@@ -60,10 +60,15 @@ Top opportunities (select_top_opportunities, v0.1.0 rule):
 
 from rubric import (
     BANDS,
+    BENCHMARKS,
     DIMENSIONS,
     INSUFFICIENT_DATA_LABEL,
     INSUFFICIENT_DATA_THRESHOLD,
 )
+
+# Weight split when both qualitative and quantitative questions are answered.
+QUANTITATIVE_WEIGHT = 0.40
+QUALITATIVE_WEIGHT = 0.60
 
 
 # ---------------------------------------------------------------------------
@@ -115,15 +120,81 @@ def score_question(answer, q_type, reverse=False):
             return 0.0 if is_yes else 100.0
         return 100.0 if is_yes else 0.0
 
+    # Quantitative types are scored via benchmarks, not this function.
+    # Return None here so they get picked up by score_quantitative instead.
+    if q_type in ("number", "percent"):
+        return None
+
     raise ValueError(f"Unknown question type: {q_type}")
+
+
+# ---------------------------------------------------------------------------
+# Benchmark-based scoring for quantitative questions
+# ---------------------------------------------------------------------------
+
+def score_quantitative(answer, question, industry):
+    """Score a quantitative question (number/percent) against industry benchmarks.
+
+    Returns 0-100 float, or None if no benchmark exists or answer is N/A.
+
+    For lower_is_better metrics: below p25 = 100, above p75 = 0.
+    For higher_is_better metrics: above p75 = 100, below p25 = 0.
+    Linear interpolation between benchmarks.
+    """
+    if answer is None or answer == "N/A":
+        return None
+
+    try:
+        val = float(answer)
+    except (TypeError, ValueError):
+        return None
+
+    qid = question["id"]
+    lower_is_better = question.get("lower_is_better", False)
+
+    benchmark = BENCHMARKS.get((industry, qid))
+    if benchmark is None:
+        # No benchmark for this industry/question — use a neutral 50
+        return 50.0
+
+    p25 = float(benchmark["p25"])
+    p50 = float(benchmark["p50"])
+    p75 = float(benchmark["p75"])
+
+    if lower_is_better:
+        # p25 is best (lowest), p75 is worst (highest)
+        if val <= p25:
+            return 100.0
+        elif val >= p75:
+            return 0.0
+        elif val <= p50:
+            # Interpolate between 100 (at p25) and 50 (at p50)
+            return 100.0 - 50.0 * (val - p25) / max(p50 - p25, 0.001)
+        else:
+            # Interpolate between 50 (at p50) and 0 (at p75)
+            return 50.0 - 50.0 * (val - p50) / max(p75 - p50, 0.001)
+    else:
+        # Higher is better: p75 is best, p25 is worst
+        if val >= p75:
+            return 100.0
+        elif val <= p25:
+            return 0.0
+        elif val >= p50:
+            # Interpolate between 50 (at p50) and 100 (at p75)
+            return 50.0 + 50.0 * (val - p50) / max(p75 - p50, 0.001)
+        else:
+            # Interpolate between 0 (at p25) and 50 (at p50)
+            return 50.0 * (val - p25) / max(p50 - p25, 0.001)
 
 
 # ---------------------------------------------------------------------------
 # Dimension scoring
 # ---------------------------------------------------------------------------
 
-def score_dimension(dimension, answers):
+def score_dimension(dimension, answers, industry=None):
     """Score a single dimension given a flat {question_id: answer} dict.
+
+    industry: str or None. Used to look up benchmarks for quantitative questions.
 
     Returns:
         {
@@ -135,43 +206,86 @@ def score_dimension(dimension, answers):
             "insufficient":    bool,
             "na_fraction":     float,   # fraction of dim weight answered N/A
             "question_scores": [
-                {"id", "score" or None, "weight", "na": bool},
+                {"id", "score" or None, "weight", "na": bool, "quantitative": bool},
                 ...
             ],
         }
     """
+    # Separate qualitative (likert/yesno) and quantitative (number/percent)
+    qual_questions = [q for q in dimension["questions"]
+                      if q["type"] in ("likert", "yesno")]
+    quant_questions = [q for q in dimension["questions"]
+                       if q["type"] in ("number", "percent")]
+
     total_weight = sum(q["weight"] for q in dimension["questions"])
-    na_weight = 0.0
-    weighted_sum = 0.0
-    effective_weight = 0.0
     question_scores = []
 
-    for q in dimension["questions"]:
+    # --- Score qualitative questions ---
+    qual_weighted_sum = 0.0
+    qual_effective_weight = 0.0
+    qual_na_weight = 0.0
+    qual_total_weight = sum(q["weight"] for q in qual_questions)
+
+    for q in qual_questions:
         raw = answers.get(q["id"])
         s = score_question(raw, q["type"], q.get("reverse", False))
         if s is None:
-            na_weight += q["weight"]
+            qual_na_weight += q["weight"]
             question_scores.append({
-                "id": q["id"],
-                "score": None,
-                "weight": q["weight"],
-                "na": True,
+                "id": q["id"], "score": None, "weight": q["weight"],
+                "na": True, "quantitative": False,
             })
         else:
-            weighted_sum += s * q["weight"]
-            effective_weight += q["weight"]
+            qual_weighted_sum += s * q["weight"]
+            qual_effective_weight += q["weight"]
             question_scores.append({
-                "id": q["id"],
-                "score": s,
-                "weight": q["weight"],
-                "na": False,
+                "id": q["id"], "score": s, "weight": q["weight"],
+                "na": False, "quantitative": False,
             })
 
-    na_fraction = (na_weight / total_weight) if total_weight > 0 else 0.0
+    # --- Score quantitative questions ---
+    quant_weighted_sum = 0.0
+    quant_effective_weight = 0.0
+    quant_na_weight = 0.0
+
+    for q in quant_questions:
+        raw = answers.get(q["id"])
+        if raw is None or raw == "N/A":
+            quant_na_weight += q["weight"]
+            question_scores.append({
+                "id": q["id"], "score": None, "weight": q["weight"],
+                "na": True, "quantitative": True,
+            })
+        else:
+            s = score_quantitative(raw, q, industry)
+            if s is None:
+                quant_na_weight += q["weight"]
+                question_scores.append({
+                    "id": q["id"], "score": None, "weight": q["weight"],
+                    "na": True, "quantitative": True,
+                })
+            else:
+                quant_weighted_sum += s * q["weight"]
+                quant_effective_weight += q["weight"]
+                question_scores.append({
+                    "id": q["id"], "score": s, "weight": q["weight"],
+                    "na": False, "quantitative": True,
+                })
+
+    # --- Compute NA fraction and insufficiency ---
+    total_na_weight = qual_na_weight + quant_na_weight
+    na_fraction = (total_na_weight / total_weight) if total_weight > 0 else 0.0
+
+    # Insufficiency is based on qualitative questions only (quantitative are
+    # optional enrichment and should not cause a dimension to be marked
+    # insufficient).
+    qual_na_fraction = (
+        (qual_na_weight / qual_total_weight) if qual_total_weight > 0 else 1.0
+    )
     insufficient = (
-        total_weight == 0
-        or na_fraction > INSUFFICIENT_DATA_THRESHOLD
-        or effective_weight == 0
+        qual_total_weight == 0
+        or qual_na_fraction > INSUFFICIENT_DATA_THRESHOLD
+        or qual_effective_weight == 0
     )
 
     if insufficient:
@@ -186,7 +300,17 @@ def score_dimension(dimension, answers):
             "question_scores": question_scores,
         }
 
-    score = weighted_sum / effective_weight
+    # --- Blend qualitative and quantitative ---
+    qual_score = qual_weighted_sum / qual_effective_weight
+    has_quant = quant_effective_weight > 0
+
+    if has_quant:
+        quant_score = quant_weighted_sum / quant_effective_weight
+        score = (QUALITATIVE_WEIGHT * qual_score +
+                 QUANTITATIVE_WEIGHT * quant_score)
+    else:
+        score = qual_score
+
     band = assign_band(score)
     return {
         "id": dimension["id"],
@@ -426,15 +550,17 @@ def build_action_plan(risks, opportunities):
 # End-to-end convenience
 # ---------------------------------------------------------------------------
 
-def run_audit(answers, dimensions=None):
+def run_audit(answers, dimensions=None, industry=None):
     """Run the full scoring pipeline.
 
-    answers: flat dict {question_id: answer_value_or_"N/A"}
+    answers:    flat dict {question_id: answer_value_or_"N/A"}
+    industry:   str or None. Passed to score_dimension for benchmark lookups.
     Returns a single dict suitable for downstream rendering and JSON export.
     """
     dims = dimensions if dimensions is not None else DIMENSIONS
 
-    dim_results = {d["id"]: score_dimension(d, answers) for d in dims}
+    dim_results = {d["id"]: score_dimension(d, answers, industry=industry)
+                   for d in dims}
     norm_weights = normalize_weights(dims)
     overall = score_overall(dim_results, norm_weights)
     risks = select_top_risks(dim_results, dims)

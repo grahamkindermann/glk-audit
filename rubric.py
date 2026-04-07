@@ -217,6 +217,28 @@ DIMENSIONS = [
                 "opportunity_copy": "Paying at or above market for critical roles turns retention into a moat.",
                 "recommendation": "Benchmark your top three roles this quarter against published ranges and close any gap for anyone you'd fight to keep.",
             },
+            {
+                "id": "per_q_turnover_pct",
+                "text": "Annual voluntary turnover (%)",
+                "type": "percent",
+                "weight": 1.5,
+                "lower_is_better": True,
+                "allow_na": True,
+                "risk_copy": "High voluntary turnover is a compounding tax on institutional knowledge and hiring costs.",
+                "opportunity_copy": "Even a few points of turnover reduction pays for itself in avoided recruiting and ramp costs.",
+                "recommendation": "Interview your last three departures for the real reason they left, then fix the pattern.",
+            },
+            {
+                "id": "per_q_days_to_fill",
+                "text": "Average days to fill a role",
+                "type": "number",
+                "weight": 1.0,
+                "lower_is_better": True,
+                "allow_na": True,
+                "risk_copy": "Slow hiring means every open seat is draining the team that remains.",
+                "opportunity_copy": "Cutting time-to-fill by even a week compounds across every hire.",
+                "recommendation": "Pre-build job descriptions and sourcing channels for your top three roles before you need them.",
+            },
         ],
     },
     {
@@ -313,6 +335,28 @@ DIMENSIONS = [
                 "opportunity_copy": "This single change reveals whether the business is actually profitable or just subsidized by the owner.",
                 "recommendation": "Benchmark your role to a market salary and book that number as owner compensation, even if you don't take it as cash.",
             },
+            {
+                "id": "fin_q_days_to_close",
+                "text": "Days to close monthly books",
+                "type": "number",
+                "weight": 1.2,
+                "lower_is_better": True,
+                "allow_na": True,
+                "risk_copy": "A slow close means decisions are made on stale numbers.",
+                "opportunity_copy": "Every day you cut from the close gives you a day of faster decision-making.",
+                "recommendation": "Set a hard close-day target and work backward to identify the bottleneck steps.",
+            },
+            {
+                "id": "fin_q_ar_over_60_pct",
+                "text": "Accounts receivable over 60 days (%)",
+                "type": "percent",
+                "weight": 1.0,
+                "lower_is_better": True,
+                "allow_na": True,
+                "risk_copy": "Aging receivables are a silent working capital drain that compounds into write-offs.",
+                "opportunity_copy": "Tightening collections on the oldest invoices often frees meaningful cash with one phone call.",
+                "recommendation": "Call your top five overdue accounts this week personally.",
+            },
         ],
     },
     {
@@ -387,6 +431,28 @@ DIMENSIONS = [
                 "opportunity_copy": "Vendors negotiate when you ask; most owners never ask.",
                 "recommendation": "Before your next renewal, ask for a discount in writing; do this for every vendor.",
             },
+            {
+                "id": "sw_q_num_saas_tools",
+                "text": "Number of paid SaaS tools in use",
+                "type": "number",
+                "weight": 0.8,
+                "lower_is_better": False,
+                "allow_na": True,
+                "risk_copy": "Tool sprawl means you are paying for overlap, confusion, and integration gaps.",
+                "opportunity_copy": "Knowing your exact count is the first step to rationalizing the stack.",
+                "recommendation": "Build a complete tool inventory this week and flag any with fewer than three active users.",
+            },
+            {
+                "id": "sw_q_software_spend_pct",
+                "text": "Annual software spend as % of revenue",
+                "type": "percent",
+                "weight": 0.8,
+                "lower_is_better": False,
+                "allow_na": True,
+                "risk_copy": "Software spend outside the industry norm — too high or too low — signals either waste or underinvestment.",
+                "opportunity_copy": "Benchmarking spend against your vertical reveals where you are over- or under-tooled.",
+                "recommendation": "Pull total SaaS spend from AP, divide by revenue, and compare to industry median.",
+            },
         ],
     },
     {
@@ -438,6 +504,17 @@ DIMENSIONS = [
                 "risk_copy": "The absence of a policy is itself the policy — and it is the wrong one.",
                 "opportunity_copy": "Clear rules let the team use AI faster, not slower.",
                 "recommendation": "Draft a one-page AI policy this week covering customer data, confidentiality, and approved tools; share it with the team.",
+            },
+            {
+                "id": "ai_q_num_ai_workflows",
+                "text": "Number of workflows with AI augmentation in production",
+                "type": "number",
+                "weight": 1.2,
+                "lower_is_better": False,
+                "allow_na": True,
+                "risk_copy": "Zero production AI workflows means you are falling behind competitors who have them.",
+                "opportunity_copy": "Each production AI workflow compounds — it trains the team, generates data, and unlocks the next one.",
+                "recommendation": "Pick one high-volume, text-heavy process and deploy an AI tool on it within 30 days.",
             },
         ],
     },
@@ -524,6 +601,28 @@ DIMENSIONS = [
                 "opportunity_copy": "Referrals are the highest-margin, highest-trust acquisition channel, and building the engine is cheap and durable.",
                 "recommendation": "Build a systematic referral ask into your customer success handoff and measure referrals per quarter.",
             },
+            {
+                "id": "sal_q_cac",
+                "text": "Customer acquisition cost ($)",
+                "type": "number",
+                "weight": 1.2,
+                "lower_is_better": True,
+                "allow_na": True,
+                "risk_copy": "Not knowing CAC means you cannot tell which growth channels are profitable.",
+                "opportunity_copy": "Even a rough CAC number transforms marketing from a cost center into a measurable investment.",
+                "recommendation": "Calculate fully-loaded CAC for your top two channels this month.",
+            },
+            {
+                "id": "sal_q_monthly_churn_pct",
+                "text": "Monthly customer churn rate (%)",
+                "type": "percent",
+                "weight": 1.2,
+                "lower_is_better": True,
+                "allow_na": True,
+                "risk_copy": "High churn means you are filling a leaking bucket — growth masks the real problem.",
+                "opportunity_copy": "Cutting churn by even half a point compounds into massive LTV improvement.",
+                "recommendation": "Interview your last five churned customers and fix the top pattern.",
+            },
         ],
     },
     {
@@ -609,6 +708,28 @@ DIMENSIONS = [
                 "opportunity_copy": "Tightening meeting discipline is free and immediately returns hours per week across the team.",
                 "recommendation": "Audit your recurring meetings and cut any that cannot name a decision made in the last month.",
             },
+            {
+                "id": "ops_q_on_time_delivery_pct",
+                "text": "On-time, in-full delivery rate (%)",
+                "type": "percent",
+                "weight": 1.2,
+                "lower_is_better": False,
+                "allow_na": True,
+                "risk_copy": "Every missed delivery erodes the trust that keeps customers renewing.",
+                "opportunity_copy": "Tracking OTIF for 60 days reveals the root causes you can actually fix.",
+                "recommendation": "Instrument OTIF measurement this month, even roughly — you cannot fix what you don't measure.",
+            },
+            {
+                "id": "ops_q_mttr_hours",
+                "text": "Mean time to resolve customer issues (hours)",
+                "type": "number",
+                "weight": 1.0,
+                "lower_is_better": True,
+                "allow_na": True,
+                "risk_copy": "Long resolution times compound: one slow fix creates three follow-up tickets.",
+                "opportunity_copy": "Cutting MTTR often costs nothing — the fix is usually a process bottleneck, not a resource gap.",
+                "recommendation": "Pull your last 20 resolved tickets, find the step where they sat longest, and fix that step.",
+            },
         ],
     },
 ]
@@ -620,9 +741,114 @@ DIMENSIONS = [
 FIRMOGRAPHICS = [
     {"id": "company_name", "label": "Company name",                          "type": "text"},
     {"id": "revenue_band", "label": "Annual revenue",                        "type": "select",
-     "options": ["<$2M", "$2–5M", "$5–10M", "$10–20M", "$20M+"]},
-    {"id": "employees",    "label": "Full-time employees",                   "type": "int"},
-    {"id": "industry",     "label": "Industry",                              "type": "text"},
-    {"id": "years",        "label": "Years in business",                     "type": "int"},
+     "options": ["<$1M", "$1–5M", "$5–20M", "$20–50M", "$50–100M", "$100M+"]},
+    {"id": "ebitda_margin", "label": "EBITDA margin (%)",                    "type": "int"},
+    {"id": "employees",    "label": "Full-time headcount",                   "type": "int"},
+    {"id": "industry",     "label": "Industry",                              "type": "select",
+     "options": ["SaaS", "Professional Services", "Manufacturing",
+                 "Retail / E-commerce", "Healthcare", "Financial Services", "Other"]},
+    {"id": "years",        "label": "Years in operation",                    "type": "int"},
     {"id": "owner_hours",  "label": "Owner's weekly hours in the business",  "type": "int"},
 ]
+
+# ---------------------------------------------------------------------------
+# Industry Benchmarks
+#
+# Keyed by (industry, question_id). Each entry has p25/p50/p75 values.
+# Used by scoring.py to compute percentile-based scores for quantitative
+# questions. Values are reasonable estimates for v0.2; refine with real
+# data as it accumulates.
+#
+# Convention: lower-is-better metrics (days_to_close, churn, etc.) have
+# p25 as the *best* value and p75 as the *worst*. The scoring engine
+# handles directionality via the "lower_is_better" flag on each question.
+# ---------------------------------------------------------------------------
+INDUSTRY_LIST = [
+    "SaaS", "Professional Services", "Manufacturing",
+    "Retail / E-commerce", "Healthcare", "Financial Services",
+]
+
+BENCHMARKS = {
+    # --- Personnel ---
+    ("SaaS", "per_q_turnover_pct"):               {"p25": 8,  "p50": 15, "p75": 25},
+    ("Professional Services", "per_q_turnover_pct"):{"p25": 10, "p50": 18, "p75": 28},
+    ("Manufacturing", "per_q_turnover_pct"):        {"p25": 8,  "p50": 14, "p75": 22},
+    ("Retail / E-commerce", "per_q_turnover_pct"):  {"p25": 15, "p50": 25, "p75": 40},
+    ("Healthcare", "per_q_turnover_pct"):           {"p25": 12, "p50": 20, "p75": 30},
+    ("Financial Services", "per_q_turnover_pct"):   {"p25": 8,  "p50": 14, "p75": 22},
+
+    ("SaaS", "per_q_days_to_fill"):               {"p25": 25, "p50": 40, "p75": 60},
+    ("Professional Services", "per_q_days_to_fill"):{"p25": 20, "p50": 35, "p75": 55},
+    ("Manufacturing", "per_q_days_to_fill"):        {"p25": 25, "p50": 45, "p75": 70},
+    ("Retail / E-commerce", "per_q_days_to_fill"):  {"p25": 15, "p50": 30, "p75": 50},
+    ("Healthcare", "per_q_days_to_fill"):           {"p25": 30, "p50": 50, "p75": 75},
+    ("Financial Services", "per_q_days_to_fill"):   {"p25": 25, "p50": 42, "p75": 65},
+
+    # --- Accounting & Finance ---
+    ("SaaS", "fin_q_days_to_close"):               {"p25": 5,  "p50": 8,  "p75": 15},
+    ("Professional Services", "fin_q_days_to_close"):{"p25": 5, "p50": 10, "p75": 18},
+    ("Manufacturing", "fin_q_days_to_close"):        {"p25": 7, "p50": 12, "p75": 20},
+    ("Retail / E-commerce", "fin_q_days_to_close"):  {"p25": 5, "p50": 8,  "p75": 14},
+    ("Healthcare", "fin_q_days_to_close"):           {"p25": 7, "p50": 12, "p75": 20},
+    ("Financial Services", "fin_q_days_to_close"):   {"p25": 5, "p50": 8,  "p75": 15},
+
+    ("SaaS", "fin_q_ar_over_60_pct"):              {"p25": 3,  "p50": 8,  "p75": 18},
+    ("Professional Services", "fin_q_ar_over_60_pct"):{"p25": 5,"p50": 12, "p75": 22},
+    ("Manufacturing", "fin_q_ar_over_60_pct"):       {"p25": 5, "p50": 10, "p75": 20},
+    ("Retail / E-commerce", "fin_q_ar_over_60_pct"): {"p25": 2, "p50": 5,  "p75": 12},
+    ("Healthcare", "fin_q_ar_over_60_pct"):          {"p25": 8, "p50": 18, "p75": 30},
+    ("Financial Services", "fin_q_ar_over_60_pct"):  {"p25": 3, "p50": 8,  "p75": 16},
+
+    # --- Software Stack ---
+    ("SaaS", "sw_q_num_saas_tools"):               {"p25": 15, "p50": 30, "p75": 55},
+    ("Professional Services", "sw_q_num_saas_tools"):{"p25": 10,"p50": 20, "p75": 40},
+    ("Manufacturing", "sw_q_num_saas_tools"):        {"p25": 8, "p50": 15, "p75": 30},
+    ("Retail / E-commerce", "sw_q_num_saas_tools"):  {"p25": 12,"p50": 25, "p75": 45},
+    ("Healthcare", "sw_q_num_saas_tools"):           {"p25": 10,"p50": 20, "p75": 35},
+    ("Financial Services", "sw_q_num_saas_tools"):   {"p25": 12,"p50": 25, "p75": 45},
+
+    ("SaaS", "sw_q_software_spend_pct"):           {"p25": 5,  "p50": 10, "p75": 18},
+    ("Professional Services", "sw_q_software_spend_pct"):{"p25":3,"p50": 6,"p75": 12},
+    ("Manufacturing", "sw_q_software_spend_pct"):    {"p25": 1, "p50": 3,  "p75": 6},
+    ("Retail / E-commerce", "sw_q_software_spend_pct"):{"p25": 2,"p50": 5, "p75": 10},
+    ("Healthcare", "sw_q_software_spend_pct"):       {"p25": 2, "p50": 5,  "p75": 10},
+    ("Financial Services", "sw_q_software_spend_pct"):{"p25": 3,"p50": 7,  "p75": 14},
+
+    # --- AI Readiness ---
+    ("SaaS", "ai_q_num_ai_workflows"):             {"p25": 2,  "p50": 5,  "p75": 10},
+    ("Professional Services", "ai_q_num_ai_workflows"):{"p25":1,"p50": 3,  "p75": 6},
+    ("Manufacturing", "ai_q_num_ai_workflows"):      {"p25": 0, "p50": 1,  "p75": 3},
+    ("Retail / E-commerce", "ai_q_num_ai_workflows"):{"p25": 1, "p50": 3,  "p75": 7},
+    ("Healthcare", "ai_q_num_ai_workflows"):         {"p25": 0, "p50": 2,  "p75": 4},
+    ("Financial Services", "ai_q_num_ai_workflows"): {"p25": 1, "p50": 3,  "p75": 7},
+
+    # --- Sales & Marketing ---
+    ("SaaS", "sal_q_cac"):                         {"p25": 200,"p50": 500, "p75": 1200},
+    ("Professional Services", "sal_q_cac"):         {"p25": 300,"p50": 800, "p75": 2000},
+    ("Manufacturing", "sal_q_cac"):                  {"p25": 150,"p50": 400,"p75": 1000},
+    ("Retail / E-commerce", "sal_q_cac"):            {"p25": 20, "p50": 60, "p75": 150},
+    ("Healthcare", "sal_q_cac"):                     {"p25": 400,"p50":1000,"p75": 2500},
+    ("Financial Services", "sal_q_cac"):             {"p25": 300,"p50": 700,"p75": 1800},
+
+    ("SaaS", "sal_q_monthly_churn_pct"):           {"p25": 1.5,"p50": 3.0,"p75": 5.0},
+    ("Professional Services", "sal_q_monthly_churn_pct"):{"p25":0.5,"p50":1.5,"p75":3.0},
+    ("Manufacturing", "sal_q_monthly_churn_pct"):    {"p25": 0.5,"p50":1.0,"p75": 2.5},
+    ("Retail / E-commerce", "sal_q_monthly_churn_pct"):{"p25":2.0,"p50":4.0,"p75":7.0},
+    ("Healthcare", "sal_q_monthly_churn_pct"):       {"p25": 0.5,"p50":1.5,"p75": 3.0},
+    ("Financial Services", "sal_q_monthly_churn_pct"):{"p25":0.5,"p50":1.5,"p75":3.0},
+
+    # --- Operations ---
+    ("SaaS", "ops_q_on_time_delivery_pct"):        {"p25": 92, "p50": 96, "p75": 99},
+    ("Professional Services", "ops_q_on_time_delivery_pct"):{"p25":88,"p50":94,"p75":98},
+    ("Manufacturing", "ops_q_on_time_delivery_pct"): {"p25": 90,"p50": 95, "p75": 98},
+    ("Retail / E-commerce", "ops_q_on_time_delivery_pct"):{"p25":90,"p50":95,"p75":99},
+    ("Healthcare", "ops_q_on_time_delivery_pct"):    {"p25": 88,"p50": 93, "p75": 97},
+    ("Financial Services", "ops_q_on_time_delivery_pct"):{"p25":92,"p50":96,"p75":99},
+
+    ("SaaS", "ops_q_mttr_hours"):                  {"p25": 2,  "p50": 8,  "p75": 24},
+    ("Professional Services", "ops_q_mttr_hours"):  {"p25": 4,  "p50": 12, "p75": 36},
+    ("Manufacturing", "ops_q_mttr_hours"):           {"p25": 4,  "p50": 16, "p75": 48},
+    ("Retail / E-commerce", "ops_q_mttr_hours"):     {"p25": 2,  "p50": 8,  "p75": 24},
+    ("Healthcare", "ops_q_mttr_hours"):              {"p25": 4,  "p50": 12, "p75": 36},
+    ("Financial Services", "ops_q_mttr_hours"):      {"p25": 2,  "p50": 8,  "p75": 24},
+}
