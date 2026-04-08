@@ -2,6 +2,7 @@
 app.py — Streamlit UI for the Structural Advantage Business Audit.
 
 Multi-step flow:
+    Step 0 (optional): Login / Sign-up (when Supabase is configured)
     Step 1: Firmographics
     Steps 2-7: One dimension per screen, in rubric.DIMENSIONS order
     Step 8: Results
@@ -20,6 +21,12 @@ import tempfile
 import streamlit as st
 import streamlit.components.v1 as components
 
+from db_client import get_client, is_configured as db_is_configured
+from db_queries import (
+    sign_up, sign_in, sign_out, get_current_user,
+    upsert_company, get_companies, save_audit,
+    get_audits_for_user, get_audits_for_company,
+)
 from recommendations import generate_recommendations
 from report import build_pdf
 from rubric import (
@@ -317,6 +324,9 @@ def render_results():
         if st.button("Regenerate AI analysis", key="regen_ai"):
             st.session_state.pop("ai_recommendations", None)
             st.rerun()
+
+    # Auto-save to Supabase if logged in
+    _auto_save_audit(result, firm, answers, ai_recs=ai_recs)
 
     _render_cta()
     _render_downloads(result, firm, answers, ai_recs=ai_recs)
@@ -622,10 +632,127 @@ def _pdf_filename(firm):
 
 
 def _reset_state():
+    # Preserve auth state across resets
+    auth_keys = {"auth_user", "auth_session", "auth_user_id"}
+    preserved = {k: st.session_state[k] for k in auth_keys if k in st.session_state}
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.session_state.saved_answers = {}
     st.session_state.saved_firm = {}
+    st.session_state.update(preserved)
+
+
+# ---------------------------------------------------------------------------
+# Auth sidebar (only when Supabase is configured)
+# ---------------------------------------------------------------------------
+
+def _render_auth_sidebar():
+    """Render login/signup/account info in the sidebar."""
+    if not db_is_configured():
+        return
+
+    client = get_client()
+    if client is None:
+        return
+
+    with st.sidebar:
+        st.markdown(f"**{BRAND['wordmark']}**")
+
+        if st.session_state.get("auth_user_id"):
+            # Logged in
+            user_email = st.session_state.get("auth_email", "")
+            st.caption(f"Signed in as {user_email}")
+
+            # Past audits
+            _render_past_audits_sidebar(client)
+
+            if st.button("Sign out", key="sign_out_btn"):
+                sign_out(client)
+                for k in ["auth_user", "auth_session", "auth_user_id", "auth_email"]:
+                    st.session_state.pop(k, None)
+                st.rerun()
+        else:
+            # Login / Sign-up form
+            tab_login, tab_signup = st.tabs(["Sign in", "Sign up"])
+
+            with tab_login:
+                email = st.text_input("Email", key="login_email")
+                password = st.text_input("Password", type="password", key="login_password")
+                if st.button("Sign in", key="login_btn", use_container_width=True):
+                    if email and password:
+                        session, err = sign_in(client, email, password)
+                        if session:
+                            st.session_state.auth_session = session
+                            st.session_state.auth_user_id = session.user.id
+                            st.session_state.auth_email = session.user.email
+                            st.rerun()
+                        else:
+                            st.error(err or "Sign-in failed.")
+                    else:
+                        st.warning("Enter email and password.")
+
+            with tab_signup:
+                new_email = st.text_input("Email", key="signup_email")
+                new_pass = st.text_input("Password", type="password", key="signup_password")
+                if st.button("Create account", key="signup_btn", use_container_width=True):
+                    if new_email and new_pass:
+                        user, err = sign_up(client, new_email, new_pass)
+                        if user:
+                            st.success("Account created! Check your email to confirm, then sign in.")
+                        else:
+                            st.error(err or "Sign-up failed.")
+                    else:
+                        st.warning("Enter email and password.")
+
+
+def _render_past_audits_sidebar(client):
+    """Show past audits in the sidebar for logged-in users."""
+    user_id = st.session_state.get("auth_user_id")
+    if not user_id:
+        return
+
+    audits = get_audits_for_user(client, user_id, limit=10)
+    if not audits:
+        st.caption("No past audits yet.")
+        return
+
+    st.markdown("---")
+    st.caption("Past audits")
+    for a in audits:
+        firm = a.get("firmographics", {})
+        name = firm.get("company_name", "Unnamed")
+        score = a.get("overall_score")
+        band = a.get("overall_band", "")
+        date_str = (a.get("created_at") or "")[:10]
+        score_str = f"{score:.0f}" if score is not None else "—"
+        st.caption(f"{name} · {score_str} ({band}) · {date_str}")
+
+
+def _auto_save_audit(result, firm, answers, ai_recs=None):
+    """Save the audit to Supabase if the user is logged in."""
+    if not st.session_state.get("auth_user_id"):
+        return
+    if st.session_state.get("audit_saved"):
+        return  # Already saved this audit
+
+    client = get_client()
+    if client is None:
+        return
+
+    user_id = st.session_state["auth_user_id"]
+
+    # Upsert company
+    company = upsert_company(client, user_id, firm)
+    if not company:
+        return
+
+    # Save audit
+    saved = save_audit(
+        client, user_id, company["id"], MODE, answers, firm, result,
+        ai_recommendations=ai_recs,
+    )
+    if saved:
+        st.session_state.audit_saved = True
 
 
 # ---------------------------------------------------------------------------
@@ -693,6 +820,9 @@ def main():
         layout="centered",
     )
     init_state()
+
+    # Auth sidebar (only renders when Supabase is configured)
+    _render_auth_sidebar()
 
     render_wordmark()
     render_progress()
