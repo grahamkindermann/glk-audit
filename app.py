@@ -20,6 +20,7 @@ import tempfile
 import streamlit as st
 import streamlit.components.v1 as components
 
+from recommendations import generate_recommendations
 from report import build_pdf
 from rubric import (
     BENCHMARKS,
@@ -281,11 +282,18 @@ def render_results():
         _render_incomplete_warning(insufficient_dims)
         return
 
+    # --- AI recommendations (gated on ANTHROPIC_API_KEY) ---
+    ai_recs = _get_or_generate_ai_recs(result, firm, answers)
+
     st.header("Results")
     if MODE == "advisory":
         company = (firm.get("company_name") or "").strip() or "your business"
         st.caption(f"Prepared for {company}")
     st.write("")
+
+    # AI executive summary at the top (advisory mode only)
+    if ai_recs and MODE == "advisory":
+        _render_ai_executive_summary(ai_recs)
 
     _render_overall(result["overall"])
     _render_dimension_table(result["dimensions"])
@@ -294,13 +302,24 @@ def render_results():
     if MODE == "advisory":
         _render_benchmark_comparison(answers, industry)
         _render_opportunities(result["opportunities"])
-        _render_recommendations(result["risks"], result["opportunities"])
-        _render_action_plan(result["action_plan"])
+        if ai_recs:
+            _render_ai_dimension_analyses(ai_recs)
+            _render_ai_action_plan(ai_recs)
+            _render_ai_roi_estimates(ai_recs)
+        else:
+            _render_recommendations(result["risks"], result["opportunities"])
+            _render_action_plan(result["action_plan"])
     elif industry:
         _render_benchmark_comparison(answers, industry)
 
+    # Regenerate button (advisory mode with API key)
+    if MODE == "advisory" and os.environ.get("ANTHROPIC_API_KEY"):
+        if st.button("Regenerate AI analysis", key="regen_ai"):
+            st.session_state.pop("ai_recommendations", None)
+            st.rerun()
+
     _render_cta()
-    _render_downloads(result, firm, answers)
+    _render_downloads(result, firm, answers, ai_recs=ai_recs)
 
 
 def _render_incomplete_warning(insufficient_dims):
@@ -465,6 +484,85 @@ def _render_action_plan(action_plan):
         st.write("")
 
 
+def _get_or_generate_ai_recs(result, firm, answers):
+    """Return cached AI recommendations or generate new ones."""
+    if "ai_recommendations" in st.session_state:
+        return st.session_state["ai_recommendations"]
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return None
+
+    with st.spinner("Generating AI-powered analysis..."):
+        ai_recs = generate_recommendations(result, firm, answers)
+
+    if ai_recs:
+        st.session_state["ai_recommendations"] = ai_recs
+    return ai_recs
+
+
+def _render_ai_executive_summary(ai_recs):
+    """Render the AI-generated executive summary."""
+    st.subheader("Executive Summary")
+    st.markdown(ai_recs.get("executive_summary", ""))
+    st.write("")
+
+
+def _render_ai_dimension_analyses(ai_recs):
+    """Render per-dimension AI analyses."""
+    analyses = ai_recs.get("dimension_analyses", [])
+    if not analyses:
+        return
+    st.subheader("Detailed Analysis")
+    for da in analyses:
+        st.markdown(f"**{da['dimension']}**")
+        st.markdown(da.get("analysis", ""))
+        recs = da.get("recommendations", [])
+        if recs:
+            for r in recs:
+                st.markdown(f"- {r}")
+        st.write("")
+
+
+def _render_ai_action_plan(ai_recs):
+    """Render the AI-generated 30/60/90 action plan."""
+    plan = ai_recs.get("action_plan", {})
+    if not plan:
+        return
+    st.subheader("30 / 60 / 90 Day Action Plan")
+    for phase, label in [("30_day", "30 Days — Quick Wins"),
+                          ("60_day", "60 Days — Systemic Fixes"),
+                          ("90_day", "90 Days — Strategic Initiatives")]:
+        items = plan.get(phase, [])
+        st.markdown(f"**{label}**")
+        if not items:
+            st.caption("No items for this phase.")
+        else:
+            for item in items:
+                action = item.get("action", "")
+                owner = item.get("owner", "")
+                outcome = item.get("expected_outcome", "")
+                st.markdown(f"- **{action}**")
+                if owner:
+                    st.caption(f"Owner: {owner} · Expected outcome: {outcome}")
+        st.write("")
+
+
+def _render_ai_roi_estimates(ai_recs):
+    """Render the AI-generated ROI estimates."""
+    estimates = ai_recs.get("roi_estimates", [])
+    if not estimates:
+        return
+    st.subheader("Estimated ROI — Top Recommendations")
+    rows = []
+    for e in estimates:
+        rows.append({
+            "Recommendation": e.get("recommendation", ""),
+            "Estimated Impact": e.get("estimated_impact", ""),
+            "Confidence": e.get("confidence", "").title(),
+        })
+    st.table(rows)
+
+
 def _render_cta():
     st.markdown("---")
     cta = CTA.get(MODE)
@@ -477,9 +575,9 @@ def _render_cta():
         st.markdown(f"[{cta['secondary_label']}]({cta['secondary_url']})")
 
 
-def _render_downloads(result, firm, answers):
+def _render_downloads(result, firm, answers, ai_recs=None):
     st.markdown("---")
-    pdf_bytes = _build_pdf_bytes(result, firm, answers)
+    pdf_bytes = _build_pdf_bytes(result, firm, answers, ai_recs=ai_recs)
     filename = _pdf_filename(firm)
 
     col1, col2 = st.columns(2)
@@ -501,13 +599,13 @@ def _render_downloads(result, firm, answers):
         )
 
 
-def _build_pdf_bytes(result, firm, answers):
+def _build_pdf_bytes(result, firm, answers, ai_recs=None):
     """Render the PDF to a tempfile, read it back, clean up, return bytes."""
     tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
     tmp_path = tmp.name
     tmp.close()
     try:
-        build_pdf(result, firm, tmp_path, answers=answers)
+        build_pdf(result, firm, tmp_path, answers=answers, ai_recommendations=ai_recs)
         with open(tmp_path, "rb") as f:
             return f.read()
     finally:

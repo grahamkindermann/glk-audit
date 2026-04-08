@@ -598,23 +598,140 @@ def _back_page(styles):
 
 
 # ---------------------------------------------------------------------------
+# AI-generated sections (Phase 3)
+# ---------------------------------------------------------------------------
+
+def _ai_executive_summary_section(ai_recs, styles):
+    elements = []
+    summary = ai_recs.get("executive_summary", "")
+    if not summary:
+        return elements
+    elements.append(Paragraph("Executive Summary", styles["h1"]))
+    elements.append(Spacer(1, 0.1 * inch))
+    # Split paragraphs for proper spacing
+    for para in summary.split("\n\n"):
+        para = para.strip()
+        if para:
+            elements.append(Paragraph(_esc(para), styles["body"]))
+            elements.append(Spacer(1, 0.08 * inch))
+    return elements
+
+
+def _ai_dimension_analyses_section(ai_recs, styles):
+    elements = []
+    analyses = ai_recs.get("dimension_analyses", [])
+    if not analyses:
+        return elements
+    elements.append(Paragraph("Detailed Analysis", styles["h1"]))
+    elements.append(Spacer(1, 0.1 * inch))
+    for da in analyses:
+        elements.append(Paragraph(_esc(da.get("dimension", "")), styles["h2"]))
+        analysis = da.get("analysis", "")
+        if analysis:
+            elements.append(Paragraph(_esc(analysis), styles["body"]))
+            elements.append(Spacer(1, 0.06 * inch))
+        for rec in da.get("recommendations", []):
+            elements.append(Paragraph(
+                f"\u2022  {_esc(rec)}", styles["body"],
+            ))
+            elements.append(Spacer(1, 0.04 * inch))
+        elements.append(Spacer(1, 0.1 * inch))
+    return elements
+
+
+def _ai_action_plan_section(ai_recs, styles):
+    elements = []
+    plan = ai_recs.get("action_plan", {})
+    if not plan:
+        return elements
+    elements.append(Paragraph("30 / 60 / 90 Day Action Plan", styles["h1"]))
+    elements.append(Spacer(1, 0.1 * inch))
+
+    for phase, label in [("30_day", "30 Days \u2014 Quick Wins"),
+                          ("60_day", "60 Days \u2014 Systemic Fixes"),
+                          ("90_day", "90 Days \u2014 Strategic Initiatives")]:
+        items = plan.get(phase, [])
+        elements.append(Paragraph(_esc(label), styles["h2"]))
+        if not items:
+            elements.append(Paragraph("No items for this phase.", styles["body"]))
+        else:
+            for item in items:
+                action = item.get("action", "")
+                owner = item.get("owner", "")
+                outcome = item.get("expected_outcome", "")
+                elements.append(Paragraph(
+                    f"\u2022  <b>{_esc(action)}</b>", styles["body"],
+                ))
+                if owner or outcome:
+                    elements.append(Paragraph(
+                        f"    Owner: {_esc(owner)} · Expected: {_esc(outcome)}",
+                        styles["small"],
+                    ))
+                elements.append(Spacer(1, 0.06 * inch))
+        elements.append(Spacer(1, 0.1 * inch))
+    return elements
+
+
+def _ai_roi_section(ai_recs, styles):
+    elements = []
+    estimates = ai_recs.get("roi_estimates", [])
+    if not estimates:
+        return elements
+    elements.append(Spacer(1, 0.15 * inch))
+    elements.append(Paragraph("Estimated ROI \u2014 Top Recommendations", styles["h1"]))
+    elements.append(Spacer(1, 0.1 * inch))
+
+    header = ["Recommendation", "Estimated Impact", "Confidence"]
+    tbl_rows = [header]
+    for e in estimates:
+        tbl_rows.append([
+            e.get("recommendation", ""),
+            e.get("estimated_impact", ""),
+            e.get("confidence", "").title(),
+        ])
+
+    col_widths = [3.0 * inch, 2.3 * inch, 1.0 * inch]
+    tbl = Table(tbl_rows, colWidths=col_widths)
+    tbl.setStyle(TableStyle([
+        ("FONTNAME",    (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME",    (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE",    (0, 0), (-1, -1), 9),
+        ("TEXTCOLOR",   (0, 0), (-1, 0), NAVY),
+        ("TEXTCOLOR",   (0, 1), (-1, -1), CHARCOAL),
+        ("ALIGN",       (1, 0), (-1, -1), "CENTER"),
+        ("ALIGN",       (0, 0), (0, -1), "LEFT"),
+        ("LINEBELOW",   (0, 0), (-1, 0), 1.0, NAVY),
+        ("LINEBELOW",   (0, 1), (-1, -2), 0.25, RULE_GRAY),
+        ("TOPPADDING",  (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(tbl)
+    return elements
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def build_pdf(audit_result, firmographics, output_path, mode=None, answers=None):
+def build_pdf(audit_result, firmographics, output_path, mode=None, answers=None,
+              ai_recommendations=None):
     """Build the audit PDF.
 
-    audit_result:   dict returned by scoring.run_audit()
-    firmographics:  dict from Streamlit session_state.firmographics
-    output_path:    str or Path; PDF written here
-    mode:           "lead_magnet" | "advisory" | None (defaults to rubric.MODE)
-    answers:        flat {question_id: answer} dict (for benchmark comparison)
+    audit_result:       dict returned by scoring.run_audit()
+    firmographics:      dict from Streamlit session_state.firmographics
+    output_path:        str or Path; PDF written here
+    mode:               "lead_magnet" | "advisory" | None (defaults to rubric.MODE)
+    answers:            flat {question_id: answer} dict (for benchmark comparison)
+    ai_recommendations: dict from recommendations.generate_recommendations() or None
 
     Returns: output_path (for chaining).
     """
     use_mode = mode if mode is not None else DEFAULT_MODE
     firm = firmographics or {}
     answers = answers or {}
+    ai_recs = ai_recommendations
 
     doc = SimpleDocTemplate(
         str(output_path),
@@ -633,6 +750,11 @@ def build_pdf(audit_result, firmographics, output_path, mode=None, answers=None)
     # Cover
     story.extend(_cover_page(firm, use_mode, styles))
     story.append(PageBreak())
+
+    # AI executive summary (if available, advisory mode)
+    if ai_recs and use_mode == "advisory":
+        story.extend(_ai_executive_summary_section(ai_recs, styles))
+        story.append(PageBreak())
 
     # Executive summary + radar + dimension table on one page (flows naturally)
     story.extend(_exec_summary(audit_result, styles))
@@ -655,9 +777,19 @@ def build_pdf(audit_result, firmographics, output_path, mode=None, answers=None)
     # Mode-dependent tail
     if use_mode == "advisory":
         story.extend(_opportunities_section(audit_result, styles))
-        story.extend(_recommendations_section(audit_result, styles))
-        story.append(PageBreak())
-        story.extend(_action_plan_section(audit_result, styles))
+
+        if ai_recs:
+            # AI-generated detailed analysis replaces canned recommendations
+            story.append(PageBreak())
+            story.extend(_ai_dimension_analyses_section(ai_recs, styles))
+            story.append(PageBreak())
+            story.extend(_ai_action_plan_section(ai_recs, styles))
+            story.extend(_ai_roi_section(ai_recs, styles))
+        else:
+            story.extend(_recommendations_section(audit_result, styles))
+            story.append(PageBreak())
+            story.extend(_action_plan_section(audit_result, styles))
+
         story.extend(_cta_section(use_mode, styles))
     else:
         story.extend(_cta_section(use_mode, styles))

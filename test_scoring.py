@@ -352,6 +352,207 @@ def test_blended_dimension_scoring():
     print("BLENDED DIMENSION SCORING ASSERTIONS PASSED")
 
 
+def test_prompt_construction():
+    """Verify the AI prompt builder includes all required sections."""
+    from recommendations import build_prompt
+
+    answers = build_synthetic_answers()
+    result = run_audit(answers, industry="Professional Services")
+    firm = {
+        "company_name": "Test Corp",
+        "industry": "Professional Services",
+        "revenue_band": "$5–20M",
+        "ebitda_margin": 12,
+        "employees": 45,
+        "years": 8,
+        "owner_hours": 50,
+    }
+
+    prompts = build_prompt(result, firm, answers)
+    system = prompts["system"]
+    user = prompts["user"]
+
+    # System prompt checks
+    assert "operating advisor" in system.lower(), "system prompt missing advisor role"
+    assert "private equity" in system.lower(), "system prompt missing PE context"
+
+    # User prompt checks
+    assert "Test Corp" in user, "user prompt missing company name"
+    assert "Professional Services" in user, "user prompt missing industry"
+    assert "$5–20M" in user, "user prompt missing revenue"
+    assert "AUDIT RESULTS" in user, "user prompt missing audit results header"
+    assert "Dimension scores" in user, "user prompt missing dimension scores"
+    assert "Top risks" in user, "user prompt missing risks"
+    assert "benchmarks" in user.lower(), "user prompt missing benchmarks"
+
+    # Ensure quantitative benchmark data is included
+    assert "turnover" in user.lower() or "per_q_turnover" in user, \
+        "user prompt missing quantitative data"
+
+    print()
+    print("=" * 64)
+    print("PROMPT CONSTRUCTION TEST")
+    print("=" * 64)
+    print(f"  System prompt length: {len(system)} chars")
+    print(f"  User prompt length: {len(user)} chars")
+    print(f"  Contains company name: YES")
+    print(f"  Contains industry: YES")
+    print(f"  Contains scores: YES")
+    print(f"  Contains benchmarks: YES")
+    print()
+    print("PROMPT CONSTRUCTION ASSERTIONS PASSED")
+
+
+def test_ai_graceful_fallback():
+    """Verify that missing API key returns None gracefully."""
+    import os
+    from recommendations import generate_recommendations
+
+    # Ensure no API key is set
+    original = os.environ.pop("ANTHROPIC_API_KEY", None)
+    try:
+        answers = build_synthetic_answers()
+        result = run_audit(answers, industry="Professional Services")
+        firm = {"company_name": "Test Corp", "industry": "Professional Services"}
+
+        ai_recs = generate_recommendations(result, firm, answers)
+        assert ai_recs is None, "expected None when API key is not set"
+
+        print()
+        print("=" * 64)
+        print("AI GRACEFUL FALLBACK TEST")
+        print("=" * 64)
+        print("  No API key -> returns None: YES")
+        print()
+        print("AI GRACEFUL FALLBACK ASSERTIONS PASSED")
+    finally:
+        if original:
+            os.environ["ANTHROPIC_API_KEY"] = original
+
+
+def test_pdf_with_ai_recommendations():
+    """Verify PDF generation works with AI recommendation data."""
+    import tempfile, os
+    from report import build_pdf
+
+    answers = build_synthetic_answers()
+    result = run_audit(answers, industry="Professional Services")
+    firm = {
+        "company_name": "AI Test Corp",
+        "industry": "Professional Services",
+        "revenue_band": "$5–20M",
+        "ebitda_margin": 12,
+        "employees": 45,
+        "years": 8,
+        "owner_hours": 50,
+    }
+
+    # Synthetic AI recommendations (mimics API output shape)
+    ai_recs = {
+        "executive_summary": (
+            "AI Test Corp presents a mixed operational picture. Personnel "
+            "processes are a clear weakness, with turnover above industry median "
+            "and no structured hiring pipeline. Accounting fundamentals are solid "
+            "but lack forward-looking forecasting. The biggest quick win is "
+            "implementing a documented onboarding program, which could reduce "
+            "first-year attrition by 20-30%.\n\n"
+            "The company's software stack is over-indexed on tools but "
+            "under-indexed on integration. Consolidating from 20 to 12 SaaS "
+            "tools would save approximately $36K annually and reduce context-switching."
+        ),
+        "dimension_analyses": [
+            {
+                "dimension": "Personnel",
+                "analysis": (
+                    "Voluntary turnover at 18% is at the industry median but above "
+                    "top-quartile performers (10%). Combined with a 35-day time-to-fill, "
+                    "this creates a compounding drag on productivity."
+                ),
+                "recommendations": [
+                    "Implement structured 90-day onboarding with weekly check-ins.",
+                    "Create a career progression framework for top 5 roles.",
+                    "Reduce time-to-fill to under 25 days by pre-building a candidate pipeline.",
+                ],
+            },
+            {
+                "dimension": "Software & Infrastructure",
+                "analysis": (
+                    "20 SaaS tools for a 45-person company is excessive. Software "
+                    "spend at 6% of revenue is within range but could be optimized."
+                ),
+                "recommendations": [
+                    "Audit all 20 tools — target consolidation to 12-14.",
+                    "Require SSO for any tool touching customer data.",
+                ],
+            },
+        ],
+        "action_plan": {
+            "30_day": [
+                {
+                    "action": "Exit-interview the last 3 departures",
+                    "owner": "CEO / Head of People",
+                    "expected_outcome": "Root-cause map of attrition drivers",
+                },
+                {
+                    "action": "Audit all SaaS subscriptions and tag by usage tier",
+                    "owner": "Ops lead",
+                    "expected_outcome": "Shortlist of 5+ tools to eliminate",
+                },
+            ],
+            "60_day": [
+                {
+                    "action": "Launch 90-day structured onboarding program",
+                    "owner": "Head of People",
+                    "expected_outcome": "20-30% reduction in first-year attrition",
+                },
+            ],
+            "90_day": [
+                {
+                    "action": "Build career progression framework for top 5 roles",
+                    "owner": "CEO + hiring managers",
+                    "expected_outcome": "Improved retention and internal mobility",
+                },
+            ],
+        },
+        "roi_estimates": [
+            {
+                "recommendation": "Structured onboarding program",
+                "estimated_impact": "$45K-$90K/year saved via reduced turnover",
+                "confidence": "high",
+            },
+            {
+                "recommendation": "SaaS consolidation",
+                "estimated_impact": "$36K/year in direct cost savings",
+                "confidence": "medium",
+            },
+            {
+                "recommendation": "Career progression framework",
+                "estimated_impact": "Retention of 2-3 key employees worth $150K+ each",
+                "confidence": "medium",
+            },
+        ],
+    }
+
+    # Generate advisory PDF with AI recs
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+    try:
+        build_pdf(result, firm, tmp_path, mode="advisory", answers=answers,
+                  ai_recommendations=ai_recs)
+        size = os.path.getsize(tmp_path)
+        assert size > 5000, f"AI advisory PDF too small: {size} bytes"
+        print()
+        print("=" * 64)
+        print("PDF WITH AI RECOMMENDATIONS TEST")
+        print("=" * 64)
+        print(f"  Generated advisory PDF with AI recs: {size:,} bytes")
+        print()
+        print("PDF WITH AI RECOMMENDATIONS ASSERTIONS PASSED")
+    finally:
+        os.unlink(tmp_path)
+
+
 if __name__ == "__main__":
     main()
     test_opportunities_path()
@@ -360,3 +561,6 @@ if __name__ == "__main__":
     test_insufficient_guardrail()
     test_quantitative_scoring()
     test_blended_dimension_scoring()
+    test_prompt_construction()
+    test_ai_graceful_fallback()
+    test_pdf_with_ai_recommendations()
