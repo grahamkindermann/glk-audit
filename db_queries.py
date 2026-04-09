@@ -158,6 +158,16 @@ def save_audit(client, user_id, company_id, mode, answers, firmographics,
 
     try:
         overall = result.get("overall", {})
+
+        # Build per-dimension score snapshot for historical tracking
+        dim_scores = {}
+        for dim_id, dim in result.get("dimensions", {}).items():
+            dim_scores[dim_id] = {
+                "name": dim.get("name", dim_id),
+                "score": dim.get("score"),
+                "band_label": dim.get("band_label", ""),
+            }
+
         audit_data = {
             "user_id": user_id,
             "company_id": company_id,
@@ -168,6 +178,7 @@ def save_audit(client, user_id, company_id, mode, answers, firmographics,
             "ai_recommendations": ai_recommendations,
             "overall_score": overall.get("score"),
             "overall_band": overall.get("band_label"),
+            "dimension_scores": dim_scores,
         }
         res = (
             client.table("audits")
@@ -187,7 +198,7 @@ def get_audits_for_company(client, company_id, limit=20):
     try:
         result = (
             client.table("audits")
-            .select("id, mode, overall_score, overall_band, created_at")
+            .select("id, mode, overall_score, overall_band, dimension_scores, ai_recommendations, created_at")
             .eq("company_id", company_id)
             .order("created_at", desc=True)
             .limit(limit)
@@ -224,7 +235,7 @@ def get_audits_for_user(client, user_id, limit=50):
     try:
         result = (
             client.table("audits")
-            .select("id, company_id, mode, overall_score, overall_band, created_at, firmographics")
+            .select("id, company_id, mode, overall_score, overall_band, created_at, firmographics, dimension_scores")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
             .limit(limit)
@@ -234,3 +245,131 @@ def get_audits_for_user(client, user_id, limit=50):
     except Exception as e:
         logger.error(f"Get user audits error: {e}")
         return []
+
+
+# ---------------------------------------------------------------------------
+# Historical queries (Phase 5)
+# ---------------------------------------------------------------------------
+
+def get_audit_history(client, company_id, limit=20):
+    """Return audit history for a company (for trend charts).
+
+    Returns list of dicts with: id, overall_score, overall_band,
+    dimension_scores, created_at — ordered oldest first for charting.
+    """
+    if client is None:
+        return []
+    try:
+        result = (
+            client.table("audits")
+            .select("id, overall_score, overall_band, dimension_scores, created_at")
+            .eq("company_id", company_id)
+            .order("created_at", desc=False)
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        logger.error(f"Get audit history error: {e}")
+        return []
+
+
+def get_previous_audit(client, company_id, before_id):
+    """Return the most recent audit for a company that is NOT the given audit.
+
+    Used for 'vs. last audit' comparison on the results page.
+    Returns a single audit dict or None.
+    """
+    if client is None:
+        return None
+    try:
+        result = (
+            client.table("audits")
+            .select("id, overall_score, overall_band, dimension_scores, ai_recommendations, created_at")
+            .eq("company_id", company_id)
+            .neq("id", before_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"Get previous audit error: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Recommendation tracker (Phase 5)
+# ---------------------------------------------------------------------------
+
+def save_recommendations(client, user_id, company_id, audit_id, recommendations):
+    """Save a batch of recommendations from an audit.
+
+    recommendations: list of {"dimension": str, "recommendation": str}
+    Returns list of saved records or empty list.
+    """
+    if client is None:
+        return []
+    if not recommendations:
+        return []
+
+    try:
+        rows = [
+            {
+                "user_id": user_id,
+                "company_id": company_id,
+                "audit_id": audit_id,
+                "dimension": r["dimension"],
+                "recommendation": r["recommendation"],
+                "status": "not_started",
+            }
+            for r in recommendations
+        ]
+        result = (
+            client.table("recommendation_tracker")
+            .insert(rows)
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        logger.error(f"Save recommendations error: {e}")
+        return []
+
+
+def get_recommendations_for_company(client, company_id):
+    """Return all tracked recommendations for a company, newest first."""
+    if client is None:
+        return []
+    try:
+        result = (
+            client.table("recommendation_tracker")
+            .select("*")
+            .eq("company_id", company_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        logger.error(f"Get recommendations error: {e}")
+        return []
+
+
+def update_recommendation_status(client, rec_id, new_status):
+    """Update the status of a single recommendation.
+
+    new_status: 'not_started' | 'in_progress' | 'done'
+    Returns the updated record or None.
+    """
+    if client is None:
+        return None
+    try:
+        result = (
+            client.table("recommendation_tracker")
+            .update({"status": new_status, "updated_at": datetime.utcnow().isoformat()})
+            .eq("id", rec_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"Update recommendation status error: {e}")
+        return None

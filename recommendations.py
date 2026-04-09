@@ -153,8 +153,12 @@ OUTPUT_SCHEMA = {
 }
 
 
-def _build_user_prompt(result, firmographics, answers):
-    """Construct the user prompt with all audit data."""
+def _build_user_prompt(result, firmographics, answers, recommendation_history=None):
+    """Construct the user prompt with all audit data.
+
+    recommendation_history: optional list of dicts with keys:
+        dimension, recommendation, status ('not_started'|'in_progress'|'done')
+    """
     from rubric import BENCHMARKS, DIMENSIONS
 
     industry = firmographics.get("industry", "Unknown")
@@ -250,6 +254,40 @@ Top opportunities:
 Quantitative inputs vs. industry benchmarks ({industry}):
 {chr(10).join(bench_lines) if bench_lines else "  No quantitative data provided."}
 
+"""
+
+    # Add recommendation history if available
+    if recommendation_history:
+        done = [r for r in recommendation_history if r.get("status") == "done"]
+        in_prog = [r for r in recommendation_history if r.get("status") == "in_progress"]
+        not_started = [r for r in recommendation_history if r.get("status") == "not_started"]
+
+        rec_lines = []
+        if done:
+            rec_lines.append("Completed:")
+            for r in done:
+                rec_lines.append(f"  - [{r['dimension']}] {r['recommendation']}")
+        if in_prog:
+            rec_lines.append("In progress:")
+            for r in in_prog:
+                rec_lines.append(f"  - [{r['dimension']}] {r['recommendation']}")
+        if not_started:
+            rec_lines.append("Not started:")
+            for r in not_started:
+                rec_lines.append(f"  - [{r['dimension']}] {r['recommendation']}")
+
+        prompt += f"""
+
+PRIOR RECOMMENDATIONS AND STATUS:
+{chr(10).join(rec_lines)}
+
+In your memo, acknowledge which recommendations were implemented and \
+comment on whether the scores reflect the expected improvement. For \
+recommendations still in progress or not started, assess whether they \
+remain the right priorities given the new scores."""
+
+    prompt += """
+
 Write your diagnostic memo as JSON matching the schema provided. \
 Be specific to this company's data. Do not include generic advice that \
 could apply to any business. Every recommendation should reference a \
@@ -262,9 +300,11 @@ specific score, gap, or answer from the audit above."""
 # API call
 # ---------------------------------------------------------------------------
 
-def generate_recommendations(result, firmographics, answers):
+def generate_recommendations(result, firmographics, answers, recommendation_history=None):
     """Generate AI recommendations via Claude API.
 
+    recommendation_history: optional list of prior recommendation dicts with
+        dimension, recommendation, status keys (for follow-up audits).
     Returns the structured dict on success, or None on failure / no API key.
     """
     if not ANTHROPIC_API_KEY:
@@ -277,7 +317,8 @@ def generate_recommendations(result, firmographics, answers):
         logger.warning("anthropic package not installed — skipping AI recommendations.")
         return None
 
-    user_prompt = _build_user_prompt(result, firmographics, answers)
+    user_prompt = _build_user_prompt(result, firmographics, answers,
+                                     recommendation_history=recommendation_history)
 
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -326,9 +367,10 @@ def generate_recommendations(result, firmographics, answers):
 # Prompt construction helper (for testing)
 # ---------------------------------------------------------------------------
 
-def build_prompt(result, firmographics, answers):
+def build_prompt(result, firmographics, answers, recommendation_history=None):
     """Public wrapper for testing prompt construction."""
     return {
         "system": SYSTEM_PROMPT,
-        "user": _build_user_prompt(result, firmographics, answers),
+        "user": _build_user_prompt(result, firmographics, answers,
+                                   recommendation_history=recommendation_history),
     }

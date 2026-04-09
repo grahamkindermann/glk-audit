@@ -715,8 +715,81 @@ def _ai_roi_section(ai_recs, styles):
 # Public entry point
 # ---------------------------------------------------------------------------
 
+def _progress_section(audit_result, previous_audit, styles):
+    """Render a 'Progress Since Last Audit' section with delta scores."""
+    elements = []
+    if not previous_audit:
+        return elements
+
+    prev_dims = previous_audit.get("dimension_scores") or {}
+    prev_overall = previous_audit.get("overall_score")
+    curr_overall = audit_result.get("overall", {}).get("score")
+    prev_date = (previous_audit.get("created_at") or "")[:10]
+
+    if not prev_dims and prev_overall is None:
+        return elements
+
+    elements.append(Spacer(1, 0.2 * inch))
+    elements.append(Paragraph("Progress Since Last Audit", styles["h1"]))
+    if prev_date:
+        elements.append(Paragraph(
+            f"Compared to audit on {_esc(prev_date)}", styles["body"]))
+    elements.append(Spacer(1, 0.1 * inch))
+
+    # Overall delta
+    if curr_overall is not None and prev_overall is not None:
+        delta = curr_overall - prev_overall
+        arrow = "\u2191" if delta > 0 else ("\u2193" if delta < 0 else "\u2192")
+        elements.append(Paragraph(
+            f"Overall: {curr_overall:.0f} ({arrow} {delta:+.0f} from {prev_overall:.0f})",
+            styles["body_bold"],
+        ))
+        elements.append(Spacer(1, 0.1 * inch))
+
+    # Per-dimension deltas
+    header = ["Dimension", "Current", "Previous", "Change"]
+    rows = [header]
+    curr_dims = audit_result.get("dimensions", {})
+    for dim_id, dim in curr_dims.items():
+        curr_s = dim.get("score")
+        prev = prev_dims.get(dim_id, {})
+        prev_s = prev.get("score")
+        if curr_s is not None and prev_s is not None:
+            delta = curr_s - prev_s
+            arrow = "\u2191" if delta > 0 else ("\u2193" if delta < 0 else "\u2192")
+            rows.append([
+                dim.get("name", dim_id),
+                f"{curr_s:.0f}",
+                f"{prev_s:.0f}",
+                f"{arrow} {delta:+.0f}",
+            ])
+        elif curr_s is not None:
+            rows.append([dim.get("name", dim_id), f"{curr_s:.0f}", "\u2014", "\u2014"])
+
+    if len(rows) > 1:
+        tbl = Table(rows, colWidths=[2.5 * inch, 1.2 * inch, 1.2 * inch, 1.2 * inch])
+        tbl.setStyle(TableStyle([
+            ("FONTNAME",    (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME",    (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE",    (0, 0), (-1, -1), 10),
+            ("TEXTCOLOR",   (0, 0), (-1, 0), NAVY),
+            ("TEXTCOLOR",   (0, 1), (-1, -1), CHARCOAL),
+            ("ALIGN",       (1, 0), (-1, -1), "CENTER"),
+            ("ALIGN",       (0, 0), (0, -1), "LEFT"),
+            ("LINEBELOW",   (0, 0), (-1, 0), 1.0, NAVY),
+            ("LINEBELOW",   (0, 1), (-1, -2), 0.25, RULE_GRAY),
+            ("TOPPADDING",  (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(tbl)
+
+    return elements
+
+
 def build_pdf(audit_result, firmographics, output_path, mode=None, answers=None,
-              ai_recommendations=None):
+              ai_recommendations=None, previous_audit=None):
     """Build the audit PDF.
 
     audit_result:       dict returned by scoring.run_audit()
@@ -725,6 +798,7 @@ def build_pdf(audit_result, firmographics, output_path, mode=None, answers=None,
     mode:               "lead_magnet" | "advisory" | None (defaults to rubric.MODE)
     answers:            flat {question_id: answer} dict (for benchmark comparison)
     ai_recommendations: dict from recommendations.generate_recommendations() or None
+    previous_audit:     dict with previous audit data for delta comparison, or None
 
     Returns: output_path (for chaining).
     """
@@ -763,6 +837,12 @@ def build_pdf(audit_result, firmographics, output_path, mode=None, answers=None,
     story.append(Spacer(1, 0.15 * inch))
     story.extend(_dimension_table(audit_result, styles))
     story.append(PageBreak())
+
+    # Progress since last audit (if available)
+    progress = _progress_section(audit_result, previous_audit, styles)
+    if progress:
+        story.extend(progress)
+        story.append(Spacer(1, 0.2 * inch))
 
     # Risks
     story.extend(_risks_section(audit_result, styles))

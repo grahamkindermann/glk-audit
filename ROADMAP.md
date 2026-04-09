@@ -241,7 +241,7 @@ Read ROADMAP.md for full context. We're on Phase 4 — adding authentication and
 
 ---
 
-## Phase 5 — Historical Tracking + Dashboard (2-3 days)
+## Phase 5 — Historical Tracking + Dashboard (2-3 days) ✅ SHIPPED
 
 ### Claude Code Prompt
 

@@ -553,6 +553,172 @@ def test_pdf_with_ai_recommendations():
         os.unlink(tmp_path)
 
 
+def test_prompt_with_recommendation_history():
+    """Verify the AI prompt includes prior recommendation status when provided."""
+    from recommendations import build_prompt
+
+    answers = build_synthetic_answers()
+    result = run_audit(answers, industry="Professional Services")
+    firm = {
+        "company_name": "Test Corp",
+        "industry": "Professional Services",
+        "revenue_band": "$5–20M",
+        "ebitda_margin": 12,
+        "employees": 45,
+        "years": 8,
+        "owner_hours": 50,
+    }
+
+    rec_history = [
+        {"dimension": "Personnel", "recommendation": "Implement structured onboarding", "status": "done"},
+        {"dimension": "Software", "recommendation": "Consolidate SaaS tools", "status": "in_progress"},
+        {"dimension": "Sales", "recommendation": "Define ICP", "status": "not_started"},
+    ]
+
+    prompts = build_prompt(result, firm, answers, recommendation_history=rec_history)
+    user = prompts["user"]
+
+    assert "PRIOR RECOMMENDATIONS" in user, "prompt missing recommendation history header"
+    assert "Completed:" in user, "prompt missing completed section"
+    assert "In progress:" in user, "prompt missing in-progress section"
+    assert "Not started:" in user, "prompt missing not-started section"
+    assert "Implement structured onboarding" in user, "prompt missing done recommendation"
+    assert "Consolidate SaaS tools" in user, "prompt missing in-progress recommendation"
+    assert "Define ICP" in user, "prompt missing not-started recommendation"
+
+    # Without history, the section should not appear
+    prompts_no_hist = build_prompt(result, firm, answers, recommendation_history=None)
+    assert "PRIOR RECOMMENDATIONS" not in prompts_no_hist["user"], \
+        "prompt should not have rec history when None"
+
+    print()
+    print("=" * 64)
+    print("PROMPT WITH RECOMMENDATION HISTORY TEST")
+    print("=" * 64)
+    print("  Includes completed recs: YES")
+    print("  Includes in-progress recs: YES")
+    print("  Includes not-started recs: YES")
+    print("  Absent when None: YES")
+    print()
+    print("PROMPT WITH RECOMMENDATION HISTORY ASSERTIONS PASSED")
+
+
+def test_pdf_with_progress_section():
+    """Verify PDF generation works with previous audit delta data."""
+    import tempfile, os
+    from report import build_pdf
+
+    answers = build_synthetic_answers()
+    result = run_audit(answers, industry="Professional Services")
+    firm = {
+        "company_name": "Progress Test Corp",
+        "industry": "Professional Services",
+        "revenue_band": "$5–20M",
+        "ebitda_margin": 12,
+        "employees": 45,
+        "years": 8,
+        "owner_hours": 50,
+    }
+
+    # Synthetic previous audit
+    previous_audit = {
+        "overall_score": 42.0,
+        "overall_band": "Fragile",
+        "created_at": "2025-12-01T00:00:00Z",
+        "dimension_scores": {
+            "personnel": {"name": "Personnel & Org", "score": 40.0, "band_label": "Fragile"},
+            "accounting": {"name": "Accounting & Finance", "score": 45.0, "band_label": "Fragile"},
+            "software": {"name": "Software Stack", "score": 38.0, "band_label": "At Risk"},
+            "ai": {"name": "AI Readiness", "score": 50.0, "band_label": "Fragile"},
+            "sales": {"name": "Sales & Marketing", "score": 35.0, "band_label": "At Risk"},
+            "operations": {"name": "Operations & Process", "score": 44.0, "band_label": "Fragile"},
+        },
+    }
+
+    # Generate PDF with progress section
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+    try:
+        build_pdf(result, firm, tmp_path, mode="advisory", answers=answers,
+                  previous_audit=previous_audit)
+        size = os.path.getsize(tmp_path)
+        assert size > 5000, f"Progress PDF too small: {size} bytes"
+
+        # Also test without previous audit (should still work)
+        build_pdf(result, firm, tmp_path, mode="advisory", answers=answers,
+                  previous_audit=None)
+        size_no_prev = os.path.getsize(tmp_path)
+        assert size_no_prev > 5000, f"PDF without progress too small: {size_no_prev} bytes"
+
+        print()
+        print("=" * 64)
+        print("PDF WITH PROGRESS SECTION TEST")
+        print("=" * 64)
+        print(f"  PDF with progress section: {size:,} bytes")
+        print(f"  PDF without progress: {size_no_prev:,} bytes")
+        print()
+        print("PDF WITH PROGRESS SECTION ASSERTIONS PASSED")
+    finally:
+        os.unlink(tmp_path)
+
+
+def test_extract_recommendations_from_ai():
+    """Verify extraction of flat recommendation list from AI output.
+
+    Reimplements the extraction logic here to avoid importing app.py
+    (which requires Streamlit).
+    """
+    def _extract(ai_recs):
+        if not ai_recs:
+            return []
+        recs = []
+        for da in ai_recs.get("dimension_analyses", []):
+            dim = da.get("dimension", "General")
+            for r in da.get("recommendations", []):
+                recs.append({"dimension": dim, "recommendation": r})
+        return recs
+
+    ai_recs = {
+        "dimension_analyses": [
+            {
+                "dimension": "Personnel",
+                "analysis": "Test analysis",
+                "recommendations": [
+                    "Implement onboarding",
+                    "Build career framework",
+                ],
+            },
+            {
+                "dimension": "Software",
+                "analysis": "Test analysis",
+                "recommendations": [
+                    "Consolidate SaaS tools",
+                ],
+            },
+        ],
+    }
+
+    flat = _extract(ai_recs)
+    assert len(flat) == 3, f"expected 3 recommendations, got {len(flat)}"
+    assert flat[0]["dimension"] == "Personnel"
+    assert flat[0]["recommendation"] == "Implement onboarding"
+    assert flat[2]["dimension"] == "Software"
+
+    # None input
+    assert _extract(None) == []
+    assert _extract({}) == []
+
+    print()
+    print("=" * 64)
+    print("EXTRACT RECOMMENDATIONS TEST")
+    print("=" * 64)
+    print(f"  Extracted {len(flat)} recommendations: YES")
+    print("  None input returns []: YES")
+    print()
+    print("EXTRACT RECOMMENDATIONS ASSERTIONS PASSED")
+
+
 if __name__ == "__main__":
     main()
     test_opportunities_path()
@@ -564,3 +730,6 @@ if __name__ == "__main__":
     test_prompt_construction()
     test_ai_graceful_fallback()
     test_pdf_with_ai_recommendations()
+    test_prompt_with_recommendation_history()
+    test_pdf_with_progress_section()
+    test_extract_recommendations_from_ai()

@@ -26,6 +26,9 @@ from db_queries import (
     sign_up, sign_in, sign_out, get_current_user,
     upsert_company, get_companies, save_audit,
     get_audits_for_user, get_audits_for_company,
+    get_audit_history, get_previous_audit,
+    save_recommendations, get_recommendations_for_company,
+    update_recommendation_status,
 )
 from recommendations import generate_recommendations
 from report import build_pdf
@@ -290,7 +293,11 @@ def render_results():
         return
 
     # --- AI recommendations (gated on ANTHROPIC_API_KEY) ---
-    ai_recs = _get_or_generate_ai_recs(result, firm, answers)
+    rec_history = _get_recommendation_history_for_prompt(firm)
+    ai_recs = _get_or_generate_ai_recs(result, firm, answers, rec_history=rec_history)
+
+    # --- Fetch previous audit for comparison (if logged in) ---
+    previous_audit = _get_previous_audit_for_comparison(firm)
 
     st.header("Results")
     if MODE == "advisory":
@@ -302,8 +309,8 @@ def render_results():
     if ai_recs and MODE == "advisory":
         _render_ai_executive_summary(ai_recs)
 
-    _render_overall(result["overall"])
-    _render_dimension_table(result["dimensions"])
+    _render_overall(result["overall"], previous_audit=previous_audit)
+    _render_dimension_table(result["dimensions"], previous_audit=previous_audit)
     _render_risks(result["risks"])
 
     if MODE == "advisory":
@@ -329,7 +336,7 @@ def render_results():
     _auto_save_audit(result, firm, answers, ai_recs=ai_recs)
 
     _render_cta()
-    _render_downloads(result, firm, answers, ai_recs=ai_recs)
+    _render_downloads(result, firm, answers, ai_recs=ai_recs, previous_audit=previous_audit)
 
 
 def _render_incomplete_warning(insufficient_dims):
@@ -352,7 +359,7 @@ def _render_incomplete_warning(insufficient_dims):
                 st.rerun()
 
 
-def _render_overall(overall):
+def _render_overall(overall, previous_audit=None):
     col1, col2 = st.columns([1, 2])
     with col1:
         if overall["score"] is not None:
@@ -364,19 +371,48 @@ def _render_overall(overall):
             )
         else:
             st.metric(label="Overall Score", value="—", delta=overall["band_label"], delta_color="off")
+    with col2:
+        # Show vs. last audit delta
+        if previous_audit and overall["score"] is not None:
+            prev_score = previous_audit.get("overall_score")
+            if prev_score is not None:
+                delta = overall["score"] - prev_score
+                prev_date = (previous_audit.get("created_at") or "")[:10]
+                st.metric(
+                    label="vs. Last Audit",
+                    value=f"{delta:+.0f} pts",
+                    delta=f"from {prev_score:.0f} on {prev_date}" if prev_date else None,
+                    delta_color="off",
+                )
     st.write("")
 
 
-def _render_dimension_table(dimensions):
+def _render_dimension_table(dimensions, previous_audit=None):
+    """Render dimension scores with optional 'vs. last audit' column."""
     st.subheader("Per-dimension scores")
+
+    prev_dims = {}
+    if previous_audit:
+        prev_dims = previous_audit.get("dimension_scores") or {}
+
     rows = []
-    for _dim_id, dim in dimensions.items():
+    for dim_id, dim in dimensions.items():
         score_str = f"{dim['score']:.0f}" if dim["score"] is not None else "—"
-        rows.append({
+        row = {
             "Dimension": dim["name"],
             "Score": score_str,
             "Band": dim["band_label"],
-        })
+        }
+        if prev_dims:
+            prev = prev_dims.get(dim_id, {})
+            p_score = prev.get("score")
+            if dim["score"] is not None and p_score is not None:
+                delta = dim["score"] - p_score
+                arrow = "+" if delta > 0 else ""
+                row["vs. Last"] = f"{arrow}{delta:.0f}"
+            else:
+                row["vs. Last"] = "—"
+        rows.append(row)
     st.table(rows)
 
 
@@ -494,7 +530,7 @@ def _render_action_plan(action_plan):
         st.write("")
 
 
-def _get_or_generate_ai_recs(result, firm, answers):
+def _get_or_generate_ai_recs(result, firm, answers, rec_history=None):
     """Return cached AI recommendations or generate new ones."""
     if "ai_recommendations" in st.session_state:
         return st.session_state["ai_recommendations"]
@@ -503,11 +539,48 @@ def _get_or_generate_ai_recs(result, firm, answers):
         return None
 
     with st.spinner("Generating AI-powered analysis..."):
-        ai_recs = generate_recommendations(result, firm, answers)
+        ai_recs = generate_recommendations(result, firm, answers,
+                                           recommendation_history=rec_history)
 
     if ai_recs:
         st.session_state["ai_recommendations"] = ai_recs
     return ai_recs
+
+
+def _get_recommendation_history_for_prompt(firm):
+    """Fetch past recommendation statuses for the AI prompt context.
+
+    Returns list of dicts with dimension, recommendation, status — or None.
+    """
+    if not st.session_state.get("auth_user_id"):
+        return None
+
+    client = get_client()
+    if client is None:
+        return None
+
+    user_id = st.session_state["auth_user_id"]
+    name = (firm.get("company_name") or "").strip()
+    if not name:
+        return None
+
+    companies = get_companies(client, user_id)
+    company = next((c for c in companies if c["name"] == name), None)
+    if not company:
+        return None
+
+    recs = get_recommendations_for_company(client, company["id"])
+    if not recs:
+        return None
+
+    return [
+        {
+            "dimension": r.get("dimension", ""),
+            "recommendation": r.get("recommendation", ""),
+            "status": r.get("status", "not_started"),
+        }
+        for r in recs
+    ]
 
 
 def _render_ai_executive_summary(ai_recs):
@@ -585,9 +658,9 @@ def _render_cta():
         st.markdown(f"[{cta['secondary_label']}]({cta['secondary_url']})")
 
 
-def _render_downloads(result, firm, answers, ai_recs=None):
+def _render_downloads(result, firm, answers, ai_recs=None, previous_audit=None):
     st.markdown("---")
-    pdf_bytes = _build_pdf_bytes(result, firm, answers, ai_recs=ai_recs)
+    pdf_bytes = _build_pdf_bytes(result, firm, answers, ai_recs=ai_recs, previous_audit=previous_audit)
     filename = _pdf_filename(firm)
 
     col1, col2 = st.columns(2)
@@ -609,13 +682,14 @@ def _render_downloads(result, firm, answers, ai_recs=None):
         )
 
 
-def _build_pdf_bytes(result, firm, answers, ai_recs=None):
+def _build_pdf_bytes(result, firm, answers, ai_recs=None, previous_audit=None):
     """Render the PDF to a tempfile, read it back, clean up, return bytes."""
     tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
     tmp_path = tmp.name
     tmp.close()
     try:
-        build_pdf(result, firm, tmp_path, answers=answers, ai_recommendations=ai_recs)
+        build_pdf(result, firm, tmp_path, answers=answers,
+                  ai_recommendations=ai_recs, previous_audit=previous_audit)
         with open(tmp_path, "rb") as f:
             return f.read()
     finally:
@@ -633,13 +707,216 @@ def _pdf_filename(firm):
 
 def _reset_state():
     # Preserve auth state across resets
-    auth_keys = {"auth_user", "auth_session", "auth_user_id"}
+    auth_keys = {"auth_user", "auth_session", "auth_user_id", "auth_email"}
     preserved = {k: st.session_state[k] for k in auth_keys if k in st.session_state}
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.session_state.saved_answers = {}
     st.session_state.saved_firm = {}
     st.session_state.update(preserved)
+
+
+# ---------------------------------------------------------------------------
+# Dashboard view (Phase 5 — logged-in users only)
+# ---------------------------------------------------------------------------
+
+def _render_dashboard():
+    """Company health dashboard with trend charts, delta badges, and rec tracker."""
+    client = get_client()
+    user_id = st.session_state.get("auth_user_id")
+    if not client or not user_id:
+        return
+
+    companies = get_companies(client, user_id)
+    if not companies:
+        st.info("No companies on file yet. Run your first audit to get started.")
+        if st.button("Start new audit", type="primary", use_container_width=True):
+            st.session_state.show_dashboard = False
+            st.rerun()
+        return
+
+    # Company selector (if multiple)
+    if len(companies) == 1:
+        company = companies[0]
+    else:
+        company_names = [c["name"] for c in companies]
+        selected = st.selectbox("Select company", company_names, key="dash_company")
+        company = next((c for c in companies if c["name"] == selected), companies[0])
+
+    company_id = company["id"]
+
+    # Fetch audit history
+    history = get_audit_history(client, company_id)
+    if not history:
+        st.info(f"No audits recorded for {company['name']} yet.")
+        if st.button("Run first audit", type="primary", use_container_width=True):
+            st.session_state.show_dashboard = False
+            st.rerun()
+        return
+
+    latest = history[-1]  # most recent (history is oldest-first)
+
+    # --- Health scorecard ---
+    st.subheader(f"{company['name']} — Health Scorecard")
+
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        score = latest.get("overall_score")
+        band = latest.get("overall_band", "")
+        score_str = f"{score:.0f}" if score is not None else "—"
+        st.metric(label="Overall Score", value=score_str, delta=band, delta_color="off")
+
+        last_date = (latest.get("created_at") or "")[:10]
+        st.caption(f"Last audited: {last_date}")
+        st.caption(f"Total audits: {len(history)}")
+
+    with col2:
+        # Per-dimension scores from latest audit
+        dim_scores = latest.get("dimension_scores") or {}
+        if dim_scores:
+            rows = []
+            for dim_id, ds in dim_scores.items():
+                ds_score = ds.get("score")
+                rows.append({
+                    "Dimension": ds.get("name", dim_id),
+                    "Score": f"{ds_score:.0f}" if ds_score is not None else "—",
+                    "Band": ds.get("band_label", ""),
+                })
+            st.table(rows)
+
+    # --- Delta badges (vs. previous audit) ---
+    if len(history) >= 2:
+        prev = history[-2]
+        _render_delta_badges(latest, prev)
+
+    # --- Trend chart ---
+    if len(history) >= 2:
+        _render_trend_chart(history)
+
+    # --- Recommendation tracker ---
+    _render_recommendation_tracker(client, user_id, company_id)
+
+    st.markdown("---")
+    if st.button("Run new audit", type="primary", use_container_width=True, key="dash_new_audit"):
+        st.session_state.show_dashboard = False
+        st.rerun()
+
+
+def _render_delta_badges(latest, previous):
+    """Show score change badges between two audits."""
+    st.subheader("Changes Since Last Audit")
+
+    # Overall delta
+    curr_score = latest.get("overall_score")
+    prev_score = previous.get("overall_score")
+    if curr_score is not None and prev_score is not None:
+        delta = curr_score - prev_score
+        st.metric(
+            label="Overall",
+            value=f"{curr_score:.0f}",
+            delta=f"{delta:+.0f}",
+        )
+
+    # Per-dimension deltas
+    curr_dims = latest.get("dimension_scores") or {}
+    prev_dims = previous.get("dimension_scores") or {}
+    if curr_dims and prev_dims:
+        cols = st.columns(min(len(curr_dims), 3))
+        col_idx = 0
+        for dim_id, curr in curr_dims.items():
+            prev = prev_dims.get(dim_id, {})
+            c_score = curr.get("score")
+            p_score = prev.get("score")
+            if c_score is not None and p_score is not None:
+                delta = c_score - p_score
+                with cols[col_idx % len(cols)]:
+                    st.metric(
+                        label=curr.get("name", dim_id),
+                        value=f"{c_score:.0f}",
+                        delta=f"{delta:+.0f}",
+                    )
+                col_idx += 1
+    st.write("")
+
+
+def _render_trend_chart(history):
+    """Render score-over-time line chart."""
+    st.subheader("Score Trend")
+
+    import pandas as pd
+
+    chart_data = []
+    for audit in history:
+        date_str = (audit.get("created_at") or "")[:10]
+        overall = audit.get("overall_score")
+        if overall is not None:
+            chart_data.append({"Date": date_str, "Overall": overall})
+
+            # Also add per-dimension scores
+            dim_scores = audit.get("dimension_scores") or {}
+            for dim_id, ds in dim_scores.items():
+                if ds.get("score") is not None:
+                    chart_data[-1][ds.get("name", dim_id)] = ds["score"]
+
+    if not chart_data:
+        return
+
+    df = pd.DataFrame(chart_data).set_index("Date")
+    st.line_chart(df)
+
+
+def _render_recommendation_tracker(client, user_id, company_id):
+    """Render the recommendation checklist with status updates."""
+    recs = get_recommendations_for_company(client, company_id)
+    if not recs:
+        return
+
+    st.subheader("Recommendation Tracker")
+    st.caption("Track progress on past recommendations. Status updates are saved automatically.")
+
+    STATUS_OPTIONS = ["not_started", "in_progress", "done"]
+    STATUS_LABELS = {
+        "not_started": "Not started",
+        "in_progress": "In progress",
+        "done": "Done",
+    }
+
+    for i, rec in enumerate(recs):
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            dim = rec.get("dimension", "")
+            text = rec.get("recommendation", "")
+            current_status = rec.get("status", "not_started")
+            icon = {"not_started": "", "in_progress": "", "done": ""}
+            st.markdown(f"{icon.get(current_status, '')} **{dim}**: {text}")
+        with col2:
+            new_status = st.selectbox(
+                "Status",
+                options=STATUS_OPTIONS,
+                format_func=lambda s: STATUS_LABELS.get(s, s),
+                index=STATUS_OPTIONS.index(current_status) if current_status in STATUS_OPTIONS else 0,
+                key=f"rec_status_{rec['id']}_{i}",
+                label_visibility="collapsed",
+            )
+            if new_status != current_status:
+                update_recommendation_status(client, rec["id"], new_status)
+                st.rerun()
+
+
+def _extract_recommendations_from_ai(ai_recs):
+    """Extract flat list of recommendations from AI output for saving to tracker.
+
+    Returns list of {"dimension": str, "recommendation": str}.
+    """
+    if not ai_recs:
+        return []
+
+    recs = []
+    for da in ai_recs.get("dimension_analyses", []):
+        dim = da.get("dimension", "General")
+        for r in da.get("recommendations", []):
+            recs.append({"dimension": dim, "recommendation": r})
+    return recs
 
 
 # ---------------------------------------------------------------------------
@@ -662,6 +939,13 @@ def _render_auth_sidebar():
             # Logged in
             user_email = st.session_state.get("auth_email", "")
             st.caption(f"Signed in as {user_email}")
+
+            # Dashboard link
+            if st.button("Dashboard", key="dash_btn", use_container_width=True):
+                st.session_state.show_dashboard = True
+                st.session_state.current_step = 0
+                st.session_state.firmographics = {}
+                st.rerun()
 
             # Past audits
             _render_past_audits_sidebar(client)
@@ -728,6 +1012,44 @@ def _render_past_audits_sidebar(client):
         st.caption(f"{name} · {score_str} ({band}) · {date_str}")
 
 
+def _get_previous_audit_for_comparison(firm):
+    """Fetch the previous audit for 'vs. last audit' comparison.
+
+    Only works when user is logged in and has a saved audit for this company.
+    Returns a previous audit dict or None.
+    """
+    if not st.session_state.get("auth_user_id"):
+        return None
+
+    client = get_client()
+    if client is None:
+        return None
+
+    user_id = st.session_state["auth_user_id"]
+    name = (firm.get("company_name") or "").strip()
+    if not name:
+        return None
+
+    # Find the company
+    companies = get_companies(client, user_id)
+    company = next((c for c in companies if c["name"] == name), None)
+    if not company:
+        return None
+
+    # Get previous audits (before the current one being viewed)
+    audits = get_audits_for_company(client, company["id"], limit=2)
+    if not audits:
+        return None
+
+    # If we've already saved this audit, the most recent one in the DB is "this" one,
+    # so return the second one. If not yet saved, return the most recent.
+    if st.session_state.get("audit_saved") and len(audits) >= 2:
+        return audits[1]  # second most recent
+    elif not st.session_state.get("audit_saved") and len(audits) >= 1:
+        return audits[0]  # most recent (before current)
+    return None
+
+
 def _auto_save_audit(result, firm, answers, ai_recs=None):
     """Save the audit to Supabase if the user is logged in."""
     if not st.session_state.get("auth_user_id"):
@@ -753,6 +1075,12 @@ def _auto_save_audit(result, firm, answers, ai_recs=None):
     )
     if saved:
         st.session_state.audit_saved = True
+
+        # Save AI recommendations to tracker (if any)
+        if ai_recs:
+            flat_recs = _extract_recommendations_from_ai(ai_recs)
+            if flat_recs:
+                save_recommendations(client, user_id, company["id"], saved["id"], flat_recs)
 
 
 # ---------------------------------------------------------------------------
@@ -825,6 +1153,15 @@ def main():
     _render_auth_sidebar()
 
     render_wordmark()
+
+    # Dashboard view for logged-in users (before starting a new audit)
+    if (st.session_state.get("auth_user_id")
+            and st.session_state.get("show_dashboard", True)
+            and st.session_state.current_step == 0
+            and not st.session_state.get("firmographics")):
+        _render_dashboard()
+        return
+
     render_progress()
     st.write("")
 
