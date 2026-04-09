@@ -19,7 +19,6 @@ import re
 import tempfile
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from db_client import get_client, is_configured as db_is_configured
 from db_queries import (
@@ -1281,7 +1280,7 @@ def main():
     # Scroll to top on every page render (fixes "stuck at bottom" after Next).
     # The Streamlit app lives inside a nested iframe on Cloud; the actual
     # scrollable container is <section data-testid="stMain"> in the parent doc.
-    components.html(
+    st.html(
         """
         <script>
         setTimeout(function() {
@@ -1291,8 +1290,7 @@ def main():
             } catch(e) {}
         }, 100);
         </script>
-        """,
-        height=0,
+        """
     )
 
     st.caption(f"Rubric v{RUBRIC_VERSION}")
