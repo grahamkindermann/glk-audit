@@ -32,6 +32,76 @@ import os
 MODE = os.environ.get("AUDIT_MODE", "lead_magnet")
 
 # ---------------------------------------------------------------------------
+# TIERS — feature-gate definitions for paid plans
+# "free" features are always available. Each higher tier inherits all
+# features from the tier below.
+#
+# stripe_price_id values are placeholders — replace with real Stripe price
+# IDs once you create products in the Stripe Dashboard.
+# ---------------------------------------------------------------------------
+TIERS = {
+    "free": {
+        "name": "Lead Magnet",
+        "price_monthly": 0,
+        "stripe_price_id": None,
+        "features": {
+            "scores",
+            "risk_ranking",
+            "basic_pdf",
+        },
+    },
+    "pro": {
+        "name": "Professional",
+        "price_monthly": 99,
+        "stripe_price_id": os.environ.get("STRIPE_PRICE_PRO", "price_pro_placeholder"),
+        "features": {
+            # Inherits free features +
+            "scores",
+            "risk_ranking",
+            "basic_pdf",
+            "quantitative_benchmarks",
+            "ai_recommendations",
+            "pdf_full",
+            "historical_tracking",
+            "recommendation_tracker",
+        },
+    },
+    "team": {
+        "name": "Team",
+        "price_monthly": 299,
+        "stripe_price_id": os.environ.get("STRIPE_PRICE_TEAM", "price_team_placeholder"),
+        "features": {
+            # Inherits pro features +
+            "scores",
+            "risk_ranking",
+            "basic_pdf",
+            "quantitative_benchmarks",
+            "ai_recommendations",
+            "pdf_full",
+            "historical_tracking",
+            "recommendation_tracker",
+            "multi_respondent",
+            "team_consensus",
+            "blind_spots",
+            "white_label_pdf",
+        },
+    },
+}
+
+
+def has_feature(tier, feature):
+    """Check if a tier includes a given feature.
+
+    Args:
+        tier: "free", "pro", or "team"
+        feature: feature string (e.g., "ai_recommendations")
+
+    Returns True if the tier includes the feature.
+    """
+    tier_def = TIERS.get(tier, TIERS["free"])
+    return feature in tier_def["features"]
+
+# ---------------------------------------------------------------------------
 # Brand strings
 # ---------------------------------------------------------------------------
 BRAND = {

@@ -40,8 +40,15 @@ from rubric import (
     FIRMOGRAPHICS,
     MODE,
     RUBRIC_VERSION,
+    TIERS,
+    has_feature,
 )
 from scoring import run_audit
+from stripe_gate import (
+    is_configured as stripe_is_configured,
+    create_checkout_session,
+    get_subscription_tier,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +70,70 @@ YESNO_OPTIONS = ["Yes", "No"]
 YESNO_OPTIONS_WITH_NA = ["Yes", "No", "N/A"]
 
 TOTAL_STEPS = 1 + len(DIMENSIONS) + 1  # firmographics + 6 dims + results
+
+
+# ---------------------------------------------------------------------------
+# Tier / feature-gate helpers
+# ---------------------------------------------------------------------------
+
+def _get_user_tier():
+    """Return the current user's subscription tier.
+
+    - If Stripe is not configured: returns "pro" (all features unlocked).
+    - If user is not logged in: returns "free".
+    - Otherwise: checks Supabase subscriptions table.
+    """
+    if not stripe_is_configured():
+        return "pro"  # Dev/demo mode: everything unlocked
+
+    if not st.session_state.get("auth_user_id"):
+        return "free"
+
+    # Cache tier in session state to avoid repeated DB lookups
+    if "user_tier" in st.session_state:
+        return st.session_state["user_tier"]
+
+    client = get_client()
+    tier = get_subscription_tier(client, st.session_state["auth_user_id"])
+    st.session_state["user_tier"] = tier
+    return tier
+
+
+def _user_has_feature(feature):
+    """Check if the current user's tier includes a feature."""
+    return has_feature(_get_user_tier(), feature)
+
+
+def _render_upgrade_prompt(feature_label, target_tier="pro"):
+    """Show an upgrade prompt when a user hits a gated feature."""
+    tier_def = TIERS.get(target_tier, TIERS["pro"])
+    price = tier_def["price_monthly"]
+    tier_name = tier_def["name"]
+    price_id = tier_def.get("stripe_price_id", "")
+
+    st.info(
+        f"**{feature_label}** is available on the {tier_name} plan (${price}/mo). "
+        f"Upgrade to unlock this and all {tier_name} features."
+    )
+
+    if stripe_is_configured() and st.session_state.get("auth_user_id") and price_id:
+        if st.button(f"Upgrade to {tier_name}", key=f"upgrade_{target_tier}_{feature_label}",
+                     type="primary", use_container_width=True):
+            user_email = st.session_state.get("auth_email", "")
+            user_id = st.session_state["auth_user_id"]
+            # Build success/cancel URLs
+            base_url = os.environ.get("APP_URL", "https://structural-audit.streamlit.app")
+            checkout_url = create_checkout_session(
+                user_id=user_id,
+                user_email=user_email,
+                price_id=price_id,
+                success_url=f"{base_url}/?checkout=success",
+                cancel_url=f"{base_url}/?checkout=cancel",
+            )
+            if checkout_url:
+                st.markdown(f"[Complete checkout →]({checkout_url})")
+            else:
+                st.error("Unable to create checkout session. Please try again.")
 
 
 # ---------------------------------------------------------------------------
@@ -292,12 +363,21 @@ def render_results():
         _render_incomplete_warning(insufficient_dims)
         return
 
-    # --- AI recommendations (gated on ANTHROPIC_API_KEY) ---
-    rec_history = _get_recommendation_history_for_prompt(firm)
-    ai_recs = _get_or_generate_ai_recs(result, firm, answers, rec_history=rec_history)
+    # --- Feature-gated sections ---
+    can_ai = _user_has_feature("ai_recommendations")
+    can_benchmarks = _user_has_feature("quantitative_benchmarks")
+    can_history = _user_has_feature("historical_tracking")
 
-    # --- Fetch previous audit for comparison (if logged in) ---
-    previous_audit = _get_previous_audit_for_comparison(firm)
+    # --- AI recommendations (gated on feature + API key) ---
+    ai_recs = None
+    if can_ai:
+        rec_history = _get_recommendation_history_for_prompt(firm)
+        ai_recs = _get_or_generate_ai_recs(result, firm, answers, rec_history=rec_history)
+
+    # --- Fetch previous audit for comparison (if logged in + feature) ---
+    previous_audit = None
+    if can_history:
+        previous_audit = _get_previous_audit_for_comparison(firm)
 
     st.header("Results")
     if MODE == "advisory":
@@ -314,20 +394,31 @@ def render_results():
     _render_risks(result["risks"])
 
     if MODE == "advisory":
-        _render_benchmark_comparison(answers, industry)
-        _render_opportunities(result["opportunities"])
-        if ai_recs:
-            _render_ai_dimension_analyses(ai_recs)
-            _render_ai_action_plan(ai_recs)
-            _render_ai_roi_estimates(ai_recs)
+        if can_benchmarks:
+            _render_benchmark_comparison(answers, industry)
         else:
-            _render_recommendations(result["risks"], result["opportunities"])
-            _render_action_plan(result["action_plan"])
-    elif industry:
-        _render_benchmark_comparison(answers, industry)
+            _render_upgrade_prompt("Industry benchmarks")
 
-    # Regenerate button (advisory mode with API key)
-    if MODE == "advisory" and os.environ.get("ANTHROPIC_API_KEY"):
+        _render_opportunities(result["opportunities"])
+
+        if can_ai:
+            if ai_recs:
+                _render_ai_dimension_analyses(ai_recs)
+                _render_ai_action_plan(ai_recs)
+                _render_ai_roi_estimates(ai_recs)
+            else:
+                _render_recommendations(result["risks"], result["opportunities"])
+                _render_action_plan(result["action_plan"])
+        else:
+            _render_upgrade_prompt("AI-powered analysis & action plan")
+    elif industry:
+        if can_benchmarks:
+            _render_benchmark_comparison(answers, industry)
+        else:
+            _render_upgrade_prompt("Industry benchmarks")
+
+    # Regenerate button (advisory mode with API key + feature)
+    if MODE == "advisory" and os.environ.get("ANTHROPIC_API_KEY") and can_ai:
         if st.button("Regenerate AI analysis", key="regen_ai"):
             st.session_state.pop("ai_recommendations", None)
             st.rerun()
@@ -785,16 +876,23 @@ def _render_dashboard():
             st.table(rows)
 
     # --- Delta badges (vs. previous audit) ---
-    if len(history) >= 2:
+    if len(history) >= 2 and _user_has_feature("historical_tracking"):
         prev = history[-2]
         _render_delta_badges(latest, prev)
 
     # --- Trend chart ---
-    if len(history) >= 2:
+    if len(history) >= 2 and _user_has_feature("historical_tracking"):
         _render_trend_chart(history)
+    elif len(history) >= 2:
+        _render_upgrade_prompt("Score trend charts & historical tracking")
 
     # --- Recommendation tracker ---
-    _render_recommendation_tracker(client, user_id, company_id)
+    if _user_has_feature("recommendation_tracker"):
+        _render_recommendation_tracker(client, user_id, company_id)
+    else:
+        recs = get_recommendations_for_company(client, company_id)
+        if recs:
+            _render_upgrade_prompt("Recommendation tracker")
 
     st.markdown("---")
     if st.button("Run new audit", type="primary", use_container_width=True, key="dash_new_audit"):
@@ -939,6 +1037,11 @@ def _render_auth_sidebar():
             # Logged in
             user_email = st.session_state.get("auth_email", "")
             st.caption(f"Signed in as {user_email}")
+
+            # Show tier badge
+            tier = _get_user_tier()
+            tier_name = TIERS.get(tier, TIERS["free"])["name"]
+            st.caption(f"Plan: **{tier_name}**")
 
             # Dashboard link
             if st.button("Dashboard", key="dash_btn", use_container_width=True):

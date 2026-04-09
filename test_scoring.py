@@ -719,6 +719,96 @@ def test_extract_recommendations_from_ai():
     print("EXTRACT RECOMMENDATIONS ASSERTIONS PASSED")
 
 
+def test_tier_feature_gates():
+    """Verify has_feature() correctly gates features by tier."""
+    from rubric import has_feature, TIERS
+
+    # Free tier should have basic features
+    assert has_feature("free", "scores"), "free should have scores"
+    assert has_feature("free", "risk_ranking"), "free should have risk_ranking"
+    assert has_feature("free", "basic_pdf"), "free should have basic_pdf"
+
+    # Free tier should NOT have paid features
+    assert not has_feature("free", "ai_recommendations"), "free should not have ai_recommendations"
+    assert not has_feature("free", "quantitative_benchmarks"), "free should not have benchmarks"
+    assert not has_feature("free", "historical_tracking"), "free should not have tracking"
+    assert not has_feature("free", "multi_respondent"), "free should not have multi_respondent"
+
+    # Pro tier should have all pro features
+    assert has_feature("pro", "scores"), "pro should have scores"
+    assert has_feature("pro", "ai_recommendations"), "pro should have ai_recommendations"
+    assert has_feature("pro", "quantitative_benchmarks"), "pro should have benchmarks"
+    assert has_feature("pro", "historical_tracking"), "pro should have tracking"
+    assert has_feature("pro", "pdf_full"), "pro should have pdf_full"
+
+    # Pro tier should NOT have team features
+    assert not has_feature("pro", "multi_respondent"), "pro should not have multi_respondent"
+    assert not has_feature("pro", "team_consensus"), "pro should not have team_consensus"
+
+    # Team tier should have everything
+    assert has_feature("team", "scores"), "team should have scores"
+    assert has_feature("team", "ai_recommendations"), "team should have ai_recommendations"
+    assert has_feature("team", "multi_respondent"), "team should have multi_respondent"
+    assert has_feature("team", "team_consensus"), "team should have team_consensus"
+    assert has_feature("team", "white_label_pdf"), "team should have white_label_pdf"
+
+    # Unknown tier falls back to free
+    assert has_feature("unknown", "scores"), "unknown tier should fall back to free"
+    assert not has_feature("unknown", "ai_recommendations"), "unknown should not have paid features"
+
+    # Verify tier pricing
+    assert TIERS["free"]["price_monthly"] == 0
+    assert TIERS["pro"]["price_monthly"] == 99
+    assert TIERS["team"]["price_monthly"] == 299
+
+    print()
+    print("=" * 64)
+    print("TIER FEATURE GATES TEST")
+    print("=" * 64)
+    print("  Free: scores=YES, ai=NO, benchmarks=NO, multi=NO")
+    print("  Pro:  scores=YES, ai=YES, benchmarks=YES, multi=NO")
+    print("  Team: scores=YES, ai=YES, benchmarks=YES, multi=YES")
+    print("  Unknown falls back to free: YES")
+    print("  Pricing: free=$0, pro=$99, team=$299")
+    print()
+    print("TIER FEATURE GATES ASSERTIONS PASSED")
+
+
+def test_stripe_graceful_degradation():
+    """Verify Stripe module works when not configured."""
+    import os
+    from stripe_gate import is_configured, get_subscription_tier
+
+    # Ensure no Stripe key
+    original = os.environ.pop("STRIPE_SECRET_KEY", None)
+    try:
+        # When not configured, is_configured returns False
+        # Note: _stripe is cached, so we need to reset it
+        import stripe_gate
+        stripe_gate._stripe = None
+        stripe_gate.STRIPE_SECRET_KEY = ""
+
+        assert not is_configured(), "should not be configured without key"
+
+        # get_subscription_tier returns "pro" when Stripe is not configured
+        # (all features unlocked for dev)
+        tier = get_subscription_tier(None, None)
+        assert tier == "pro", f"expected 'pro' without Stripe, got '{tier}'"
+
+        print()
+        print("=" * 64)
+        print("STRIPE GRACEFUL DEGRADATION TEST")
+        print("=" * 64)
+        print("  No key -> is_configured()=False: YES")
+        print("  No key -> tier='pro' (all unlocked): YES")
+        print()
+        print("STRIPE GRACEFUL DEGRADATION ASSERTIONS PASSED")
+    finally:
+        if original:
+            os.environ["STRIPE_SECRET_KEY"] = original
+            stripe_gate.STRIPE_SECRET_KEY = original
+
+
 if __name__ == "__main__":
     main()
     test_opportunities_path()
@@ -733,3 +823,5 @@ if __name__ == "__main__":
     test_prompt_with_recommendation_history()
     test_pdf_with_progress_section()
     test_extract_recommendations_from_ai()
+    test_tier_feature_gates()
+    test_stripe_graceful_degradation()
