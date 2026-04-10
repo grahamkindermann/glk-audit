@@ -24,8 +24,10 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// Map Stripe price IDs to tier names
+// Map Stripe price IDs to tier names (used by the subscription path only;
+// one-time purchases resolve tier via the purchases table + product_type).
 const PRICE_TO_TIER: Record<string, string> = {
+  [Deno.env.get("STRIPE_PRICE_REPORT") || ""]: "report",
   [Deno.env.get("STRIPE_PRICE_PRO") || ""]: "pro",
   [Deno.env.get("STRIPE_PRICE_TEAM") || ""]: "team",
 };
@@ -59,45 +61,81 @@ serve(async (req) => {
   console.log(`Received event: ${event.type}`);
 
   // -----------------------------------------------------------------------
-  // checkout.session.completed — new subscription created
+  // checkout.session.completed — branch on session mode
+  //   "payment"      -> one-time purchase, insert into `purchases`
+  //   "subscription" -> recurring subscription, upsert into `subscriptions`
   // -----------------------------------------------------------------------
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     const userId = session.metadata?.user_id;
     const stripeCustomerId = session.customer as string;
-    const stripeSubscriptionId = session.subscription as string;
 
     if (!userId) {
       console.error("No user_id in checkout session metadata");
       return new Response("OK", { status: 200 });
     }
 
-    // Fetch the subscription to get the price ID and period
-    const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
-    const priceId = subscription.items.data[0]?.price?.id || null;
-    const tier = tierFromPriceId(priceId);
+    if (session.mode === "payment") {
+      // One-time purchase flow (e.g., $149 Full Report)
+      // Retrieve the full session with line items expanded to get the price ID.
+      const fullSession = await stripe.checkout.Sessions.retrieve(session.id, {
+        expand: ["line_items"],
+      });
+      const priceId = fullSession.line_items?.data[0]?.price?.id || null;
+      const amountTotal = session.amount_total || 0;
+      const currency = session.currency || "usd";
+      const paymentIntentId = session.payment_intent as string | null;
 
-    const { error } = await supabase.from("subscriptions").upsert(
-      {
-        user_id: userId,
-        tier,
-        status: "active",
-        stripe_customer_id: stripeCustomerId,
-        stripe_subscription_id: stripeSubscriptionId,
-        stripe_price_id: priceId,
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "stripe_subscription_id" }
-    );
+      const { error } = await supabase.from("purchases").upsert(
+        {
+          user_id: userId,
+          stripe_customer_id: stripeCustomerId,
+          stripe_payment_intent_id: paymentIntentId,
+          stripe_checkout_session_id: session.id,
+          stripe_price_id: priceId,
+          product_type: "full_report",
+          amount_cents: amountTotal,
+          currency,
+          status: "completed",
+        },
+        { onConflict: "stripe_checkout_session_id" }
+      );
 
-    if (error) {
-      console.error("Supabase upsert error:", error);
-      return new Response("DB error", { status: 500 });
+      if (error) {
+        console.error("Supabase purchases upsert error:", error);
+        return new Response("DB error", { status: 500 });
+      }
+
+      console.log(`Purchase recorded: user=${userId} product=full_report amount=${amountTotal}`);
+    } else if (session.mode === "subscription") {
+      // Legacy recurring-subscription flow
+      const stripeSubscriptionId = session.subscription as string;
+      const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+      const priceId = subscription.items.data[0]?.price?.id || null;
+      const tier = tierFromPriceId(priceId);
+
+      const { error } = await supabase.from("subscriptions").upsert(
+        {
+          user_id: userId,
+          tier,
+          status: "active",
+          stripe_customer_id: stripeCustomerId,
+          stripe_subscription_id: stripeSubscriptionId,
+          stripe_price_id: priceId,
+          current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+          current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "stripe_subscription_id" }
+      );
+
+      if (error) {
+        console.error("Supabase subscriptions upsert error:", error);
+        return new Response("DB error", { status: 500 });
+      }
+
+      console.log(`Subscription created: user=${userId} tier=${tier}`);
     }
-
-    console.log(`Subscription created: user=${userId} tier=${tier}`);
   }
 
   // -----------------------------------------------------------------------

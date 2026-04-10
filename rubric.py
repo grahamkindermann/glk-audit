@@ -39,10 +39,23 @@ MODE = os.environ.get("AUDIT_MODE", "lead_magnet")
 # stripe_price_id values are placeholders — replace with real Stripe price
 # IDs once you create products in the Stripe Dashboard.
 # ---------------------------------------------------------------------------
+_FULL_REPORT_FEATURES = {
+    "scores",
+    "risk_ranking",
+    "basic_pdf",
+    "quantitative_benchmarks",
+    "ai_recommendations",
+    "pdf_full",
+    "historical_tracking",
+    "recommendation_tracker",
+}
+
 TIERS = {
     "free": {
-        "name": "Lead Magnet",
+        "name": "Free Diagnostic",
         "price_monthly": 0,
+        "price_onetime": 0,
+        "billing_mode": "free",
         "stripe_price_id": None,
         "features": {
             "scores",
@@ -50,36 +63,35 @@ TIERS = {
             "basic_pdf",
         },
     },
+    # "report" is the new primary paid tier: a one-time $149 purchase that
+    # grants lifetime access to the full report features. This replaces the
+    # former $79/mo recurring "pro" subscription.
+    "report": {
+        "name": "Full Report",
+        "price_monthly": 0,
+        "price_onetime": 149,
+        "billing_mode": "payment",   # Stripe Checkout mode
+        "stripe_price_id": os.environ.get("STRIPE_PRICE_REPORT", "price_report_placeholder"),
+        "features": _FULL_REPORT_FEATURES,
+    },
+    # "pro" is kept as an alias for backward compatibility with any existing
+    # subscription rows in the DB. Same features as "report". Do not surface
+    # it in new upgrade flows.
     "pro": {
-        "name": "Professional",
-        "price_monthly": 99,
+        "name": "Professional (legacy)",
+        "price_monthly": 79,
+        "price_onetime": 0,
+        "billing_mode": "subscription",
         "stripe_price_id": os.environ.get("STRIPE_PRICE_PRO", "price_pro_placeholder"),
-        "features": {
-            # Inherits free features +
-            "scores",
-            "risk_ranking",
-            "basic_pdf",
-            "quantitative_benchmarks",
-            "ai_recommendations",
-            "pdf_full",
-            "historical_tracking",
-            "recommendation_tracker",
-        },
+        "features": _FULL_REPORT_FEATURES,
     },
     "team": {
         "name": "Team",
         "price_monthly": 299,
+        "price_onetime": 0,
+        "billing_mode": "subscription",
         "stripe_price_id": os.environ.get("STRIPE_PRICE_TEAM", "price_team_placeholder"),
-        "features": {
-            # Inherits pro features +
-            "scores",
-            "risk_ranking",
-            "basic_pdf",
-            "quantitative_benchmarks",
-            "ai_recommendations",
-            "pdf_full",
-            "historical_tracking",
-            "recommendation_tracker",
+        "features": _FULL_REPORT_FEATURES | {
             "multi_respondent",
             "team_consensus",
             "blind_spots",

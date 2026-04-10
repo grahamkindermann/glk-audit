@@ -54,23 +54,35 @@ def is_configured():
 # Checkout + portal
 # ---------------------------------------------------------------------------
 
-def create_checkout_session(user_id, user_email, price_id, success_url, cancel_url):
-    """Create a Stripe Checkout session. Returns the checkout URL or None."""
+def create_checkout_session(user_id, user_email, price_id, success_url, cancel_url, mode="payment"):
+    """Create a Stripe Checkout session. Returns the checkout URL or None.
+
+    `mode` can be:
+        "payment"       — one-time purchase (default, used by the $149 Full Report)
+        "subscription"  — recurring subscription (legacy Pro / Team tiers)
+    """
     stripe = _get_stripe()
     if stripe is None:
         return None
 
     try:
-        session = stripe.checkout.Session.create(
-            mode="subscription",
+        kwargs = dict(
+            mode=mode,
             payment_method_types=["card"],
             customer_email=user_email,
             line_items=[{"price": price_id, "quantity": 1}],
             success_url=success_url,
             cancel_url=cancel_url,
             metadata={"user_id": user_id},
-            subscription_data={"metadata": {"user_id": user_id}},
         )
+        if mode == "subscription":
+            kwargs["subscription_data"] = {"metadata": {"user_id": user_id}}
+        else:
+            # For one-time payments, attach user_id to the payment intent too
+            # so the webhook can reconcile even if session metadata is lost.
+            kwargs["payment_intent_data"] = {"metadata": {"user_id": user_id}}
+
+        session = stripe.checkout.Session.create(**kwargs)
         return session.url
     except Exception as e:
         logger.error(f"Stripe checkout error: {e}")
@@ -158,18 +170,43 @@ def handle_webhook_event(payload, sig_header):
 # ---------------------------------------------------------------------------
 
 def get_subscription_tier(client, user_id):
-    """Check the user's active subscription tier from Supabase.
+    """Return the user's current feature tier from Supabase.
 
-    Returns "free", "pro", or "team".
-    If Stripe is not configured, returns "pro" (all features unlocked for dev).
+    Resolution order:
+      1. If Stripe is not configured, return "report" (graceful degradation —
+         all paid features unlocked for dev/demo instances).
+      2. If the user has any completed row in the `purchases` table
+         (full_report or equivalent), return "report". Lifetime unlock.
+      3. If the user has an active row in the `subscriptions` table, return
+         that row's tier (legacy path for any grandfathered subscribers).
+      4. Otherwise return "free".
     """
     if not STRIPE_SECRET_KEY:
-        # Graceful degradation: no Stripe = all features unlocked
-        return "pro"
+        # Graceful degradation: no Stripe = all paid features unlocked
+        return "report"
 
     if client is None or not user_id:
         return "free"
 
+    # 1. Check for a lifetime one-time purchase first
+    try:
+        purchase_result = (
+            client.table("purchases")
+            .select("product_type, status")
+            .eq("user_id", user_id)
+            .eq("status", "completed")
+            .limit(1)
+            .execute()
+        )
+        if purchase_result.data:
+            product_type = purchase_result.data[0].get("product_type", "full_report")
+            if product_type == "full_report":
+                return "report"
+    except Exception as e:
+        # Table may not exist yet if migration hasn't run — fall through to subscriptions
+        logger.debug(f"Purchases lookup skipped: {e}")
+
+    # 2. Fall back to legacy subscription tier
     try:
         result = (
             client.table("subscriptions")

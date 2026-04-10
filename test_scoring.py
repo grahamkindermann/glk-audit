@@ -734,16 +734,22 @@ def test_tier_feature_gates():
     assert not has_feature("free", "historical_tracking"), "free should not have tracking"
     assert not has_feature("free", "multi_respondent"), "free should not have multi_respondent"
 
-    # Pro tier should have all pro features
-    assert has_feature("pro", "scores"), "pro should have scores"
-    assert has_feature("pro", "ai_recommendations"), "pro should have ai_recommendations"
-    assert has_feature("pro", "quantitative_benchmarks"), "pro should have benchmarks"
-    assert has_feature("pro", "historical_tracking"), "pro should have tracking"
-    assert has_feature("pro", "pdf_full"), "pro should have pdf_full"
+    # Report tier (new primary paid tier, one-time $149) should have all paid features
+    assert has_feature("report", "scores"), "report should have scores"
+    assert has_feature("report", "ai_recommendations"), "report should have ai_recommendations"
+    assert has_feature("report", "quantitative_benchmarks"), "report should have benchmarks"
+    assert has_feature("report", "historical_tracking"), "report should have tracking"
+    assert has_feature("report", "pdf_full"), "report should have pdf_full"
 
-    # Pro tier should NOT have team features
-    assert not has_feature("pro", "multi_respondent"), "pro should not have multi_respondent"
-    assert not has_feature("pro", "team_consensus"), "pro should not have team_consensus"
+    # Report tier should NOT have team features
+    assert not has_feature("report", "multi_respondent"), "report should not have multi_respondent"
+    assert not has_feature("report", "team_consensus"), "report should not have team_consensus"
+
+    # Pro tier (legacy alias) should still grant the same feature set
+    assert has_feature("pro", "scores"), "pro (legacy) should have scores"
+    assert has_feature("pro", "ai_recommendations"), "pro (legacy) should have ai_recommendations"
+    assert has_feature("pro", "historical_tracking"), "pro (legacy) should have tracking"
+    assert not has_feature("pro", "multi_respondent"), "pro (legacy) should not have team features"
 
     # Team tier should have everything
     assert has_feature("team", "scores"), "team should have scores"
@@ -758,18 +764,21 @@ def test_tier_feature_gates():
 
     # Verify tier pricing
     assert TIERS["free"]["price_monthly"] == 0
-    assert TIERS["pro"]["price_monthly"] == 99
+    assert TIERS["report"]["price_onetime"] == 149
+    assert TIERS["report"]["billing_mode"] == "payment"
+    assert TIERS["pro"]["price_monthly"] == 79  # legacy subscription, kept for grandfathering
     assert TIERS["team"]["price_monthly"] == 299
 
     print()
     print("=" * 64)
     print("TIER FEATURE GATES TEST")
     print("=" * 64)
-    print("  Free: scores=YES, ai=NO, benchmarks=NO, multi=NO")
-    print("  Pro:  scores=YES, ai=YES, benchmarks=YES, multi=NO")
-    print("  Team: scores=YES, ai=YES, benchmarks=YES, multi=YES")
+    print("  Free:   scores=YES, ai=NO, benchmarks=NO, multi=NO")
+    print("  Report: scores=YES, ai=YES, benchmarks=YES, multi=NO ($149 one-time)")
+    print("  Pro:    legacy alias (same features as report)")
+    print("  Team:   scores=YES, ai=YES, benchmarks=YES, multi=YES")
     print("  Unknown falls back to free: YES")
-    print("  Pricing: free=$0, pro=$99, team=$299")
+    print("  Pricing: free=$0, report=$149 one-time, pro=$79/mo legacy, team=$299/mo")
     print()
     print("TIER FEATURE GATES ASSERTIONS PASSED")
 
@@ -790,17 +799,17 @@ def test_stripe_graceful_degradation():
 
         assert not is_configured(), "should not be configured without key"
 
-        # get_subscription_tier returns "pro" when Stripe is not configured
-        # (all features unlocked for dev)
+        # get_subscription_tier returns "report" when Stripe is not configured
+        # (all paid features unlocked for dev)
         tier = get_subscription_tier(None, None)
-        assert tier == "pro", f"expected 'pro' without Stripe, got '{tier}'"
+        assert tier == "report", f"expected 'report' without Stripe, got '{tier}'"
 
         print()
         print("=" * 64)
         print("STRIPE GRACEFUL DEGRADATION TEST")
         print("=" * 64)
         print("  No key -> is_configured()=False: YES")
-        print("  No key -> tier='pro' (all unlocked): YES")
+        print("  No key -> tier='report' (all paid features unlocked): YES")
         print()
         print("STRIPE GRACEFUL DEGRADATION ASSERTIONS PASSED")
     finally:

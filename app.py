@@ -76,14 +76,15 @@ TOTAL_STEPS = 1 + len(DIMENSIONS) + 1  # firmographics + 6 dims + results
 # ---------------------------------------------------------------------------
 
 def _get_user_tier():
-    """Return the current user's subscription tier.
+    """Return the current user's feature tier.
 
-    - If Stripe is not configured: returns "pro" (all features unlocked).
+    - If Stripe is not configured: returns "report" (all paid features unlocked
+      for dev/demo — graceful degradation).
     - If user is not logged in: returns "free".
-    - Otherwise: checks Supabase subscriptions table.
+    - Otherwise: checks Supabase purchases table first, then subscriptions.
     """
     if not stripe_is_configured():
-        return "pro"  # Dev/demo mode: everything unlocked
+        return "report"  # Dev/demo mode: everything unlocked
 
     if not st.session_state.get("auth_user_id"):
         return "free"
@@ -103,20 +104,33 @@ def _user_has_feature(feature):
     return has_feature(_get_user_tier(), feature)
 
 
-def _render_upgrade_prompt(feature_label, target_tier="pro"):
-    """Show an upgrade prompt when a user hits a gated feature."""
-    tier_def = TIERS.get(target_tier, TIERS["pro"])
-    price = tier_def["price_monthly"]
+def _render_upgrade_prompt(feature_label, target_tier="report"):
+    """Show an upgrade prompt when a user hits a gated feature.
+
+    The default target tier is "report" — the one-time $149 Full Report
+    purchase. Callers can pass a different target_tier if needed, but all
+    current paid features live on the "report" tier.
+    """
+    tier_def = TIERS.get(target_tier, TIERS["report"])
+    billing_mode = tier_def.get("billing_mode", "payment")
     tier_name = tier_def["name"]
     price_id = tier_def.get("stripe_price_id", "")
 
+    # Build price string based on billing mode
+    if billing_mode == "payment":
+        price_str = f"${tier_def.get('price_onetime', 149)} one-time"
+    else:
+        price_str = f"${tier_def.get('price_monthly', 0)}/mo"
+
     st.info(
-        f"**{feature_label}** is available on the {tier_name} plan (${price}/mo). "
-        f"Upgrade to unlock this and all {tier_name} features."
+        f"**{feature_label}** is included in the {tier_name} ({price_str}). "
+        f"Unlock the full diagnostic: AI consulting memo, dimension-level analysis, "
+        f"historical tracking, and the complete PDF report."
     )
 
     if stripe_is_configured() and st.session_state.get("auth_user_id") and price_id:
-        if st.button(f"Upgrade to {tier_name}", key=f"upgrade_{target_tier}_{feature_label}",
+        btn_label = f"Unlock {tier_name}: {price_str}"
+        if st.button(btn_label, key=f"upgrade_{target_tier}_{feature_label}",
                      type="primary", use_container_width=True):
             user_email = st.session_state.get("auth_email", "")
             user_id = st.session_state["auth_user_id"]
@@ -128,6 +142,7 @@ def _render_upgrade_prompt(feature_label, target_tier="pro"):
                 price_id=price_id,
                 success_url=f"{base_url}/?checkout=success",
                 cancel_url=f"{base_url}/?checkout=cancel",
+                mode=billing_mode,
             )
             if checkout_url:
                 st.markdown(f"[Complete checkout →]({checkout_url})")
