@@ -130,8 +130,22 @@ BRAND = {
 # ---------------------------------------------------------------------------
 CTA = {
     "lead_magnet": {
-        "headline": "Book a 30-minute structural review with Graham.",
-        "primary_label": "Schedule review",
+        # Upsell block (rendered first in the PDF CTA section). The free
+        # diagnostic exists to earn trust; the Full Report is where the
+        # depth lives. Lead with it — don't route 100% of free readers to
+        # a 30-minute solo call.
+        "upsell_headline": "See what's actually load-bearing.",
+        "upsell_body": (
+            "The Full Report adds an AI-written executive summary specific to "
+            "your answers, dimension-level analysis, an ROI-ranked action plan, "
+            "and industry benchmarks \u2014 everything this free diagnosis gestures at."
+        ),
+        "upsell_label": "Get the Full Report \u2014 $149",
+        "upsell_url":   "https://structural-audit.streamlit.app/?utm=pdf_cta",
+        # Secondary path: a human conversation with Graham. Kept for readers
+        # who want advisory depth instead of the productized report.
+        "headline": "Or, bring Graham in directly.",
+        "primary_label": "Book a 30-min structural review",
         "primary_url":   "https://calendly.com/gkholdingsllcva/structural-review",
         "secondary_label": "Subscribe to Structural Advantage",
         "secondary_url":   "https://structuraladvantage.substack.com/",

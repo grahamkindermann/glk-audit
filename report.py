@@ -28,6 +28,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # noqa: E4
 from reportlab.lib.units import inch  # noqa: E402
 from reportlab.platypus import (  # noqa: E402
     Image,
+    KeepTogether,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -155,10 +156,24 @@ def _build_styles():
         fontName="Times-Roman", fontSize=18, textColor=NAVY,
         leading=24, alignment=TA_CENTER, spaceAfter=12,
     )
+    styles["upsell_headline"] = ParagraphStyle(
+        "upsell_headline", parent=base["Normal"],
+        fontName="Times-Roman", fontSize=22, textColor=NAVY,
+        leading=28, alignment=TA_CENTER, spaceAfter=8,
+    )
+    styles["upsell_body"] = ParagraphStyle(
+        "upsell_body", parent=base["Normal"],
+        fontName="Helvetica", fontSize=10, textColor=CHARCOAL,
+        leading=14, alignment=TA_CENTER, spaceAfter=14,
+    )
     styles["cta_button"] = ParagraphStyle(
         "cta_button", parent=base["Normal"],
         fontName="Helvetica-Bold", fontSize=12, textColor=OFFWHITE,
         leading=16, alignment=TA_CENTER,
+    )
+    styles["table_cell"] = ParagraphStyle(
+        "table_cell", parent=base["Normal"],
+        fontName="Helvetica", fontSize=9, textColor=CHARCOAL, leading=11,
     )
     styles["cta_secondary"] = ParagraphStyle(
         "cta_secondary", parent=base["Normal"],
@@ -207,7 +222,11 @@ def _build_radar(audit_result):
     fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
     plt.close(fig)
     buf.seek(0)
-    return Image(buf, width=4.8 * inch, height=4.8 * inch)
+    # 4.0-inch radar (down from 4.8) leaves enough vertical room for the
+    # Per-Dimension Scores table to stay on the same page as the executive
+    # summary. With the old 4.8-inch chart, only the first dimension row
+    # fit on page 2 and the remaining five were orphaned to page 3.
+    return Image(buf, width=4.0 * inch, height=4.0 * inch)
 
 
 # ---------------------------------------------------------------------------
@@ -277,8 +296,11 @@ def _exec_summary(audit_result, styles):
 # ---------------------------------------------------------------------------
 
 def _dimension_table(audit_result, styles):
-    elements = []
-    elements.append(Paragraph("Per-Dimension Scores", styles["h2"]))
+    """Return the Per-Dimension Scores block as a single flowable wrapped in
+    KeepTogether so the header never gets orphaned from the table rows.
+    Returned as a list to preserve the existing story.extend(...) caller
+    contract in build_pdf."""
+    header_para = Paragraph("Per-Dimension Scores", styles["h2"])
 
     header = ["Dimension", "Score", "Band"]
     rows = [header]
@@ -307,7 +329,7 @@ def _dimension_table(audit_result, styles):
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
     ]))
-    elements.append(tbl)
+    return [KeepTogether([header_para, tbl])]
     return elements
 
 
@@ -462,9 +484,13 @@ def _benchmark_section(answers, industry, styles):
     header = ["Metric", "Yours", "Median", "Top Quartile", "Standing"]
     tbl_rows = [header]
     for metric, yours, med, top, grade, _color in rows_data:
-        tbl_rows.append([metric, yours, med, top, grade])
+        # Wrap the metric cell in a Paragraph so long question text (e.g.
+        # "Number of workflows with AI augmentation in production") line-
+        # wraps inside the column instead of overflowing into "Yours".
+        metric_para = Paragraph(_esc(metric), styles["table_cell"])
+        tbl_rows.append([metric_para, yours, med, top, grade])
 
-    col_widths = [2.5 * inch, 0.8 * inch, 0.8 * inch, 1.0 * inch, 1.2 * inch]
+    col_widths = [3.0 * inch, 0.7 * inch, 0.7 * inch, 0.95 * inch, 1.15 * inch]
     tbl = Table(tbl_rows, colWidths=col_widths)
 
     style_commands = [
@@ -475,10 +501,14 @@ def _benchmark_section(answers, industry, styles):
         ("TEXTCOLOR",   (0, 1), (-1, -1), CHARCOAL),
         ("ALIGN",       (1, 0), (-1, -1), "CENTER"),
         ("ALIGN",       (0, 0), (0, -1), "LEFT"),
+        # Center-align numeric/standing cells vertically so they line up
+        # visually with the wrapped metric Paragraph, which can occupy 1-2
+        # lines depending on question length.
+        ("VALIGN",      (0, 0), (-1, -1), "MIDDLE"),
         ("LINEBELOW",   (0, 0), (-1, 0), 1.0, NAVY),
         ("LINEBELOW",   (0, 1), (-1, -2), 0.25, RULE_GRAY),
-        ("TOPPADDING",  (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING",  (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
     ]
@@ -536,6 +566,64 @@ def _cta_section(mode, styles):
         return elements
 
     elements.append(Spacer(1, 0.4 * inch))
+
+    # Upsell block (free/lead_magnet PDFs only): lead with the Full Report
+    # offer, then separate with a horizontal rule, then show the secondary
+    # "book a call" CTA. This converts readers on the highest-intent page
+    # of the free deliverable instead of routing everyone to a solo call.
+    upsell_label = cta.get("upsell_label")
+    upsell_url = cta.get("upsell_url")
+    if upsell_label and upsell_url:
+        upsell_headline = cta.get("upsell_headline", "")
+        upsell_body = cta.get("upsell_body", "")
+        if upsell_headline:
+            elements.append(Paragraph(_esc(upsell_headline), styles["upsell_headline"]))
+        if upsell_body:
+            elements.append(Paragraph(_esc(upsell_body), styles["upsell_body"]))
+
+        upsell_markup = (
+            f'<link href="{_esc(upsell_url)}" color="{OFFWHITE_HEX}">'
+            f'{_esc(upsell_label)}'
+            f'</link>'
+        )
+        upsell_button_para = Paragraph(upsell_markup, styles["cta_button"])
+        upsell_btn_tbl = Table([[upsell_button_para]], colWidths=[3.2 * inch])
+        upsell_btn_tbl.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1), NAVY),
+            ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 14),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+        ]))
+        upsell_outer = Table([[upsell_btn_tbl]], colWidths=[6.5 * inch])
+        upsell_outer.setStyle(TableStyle([
+            ("ALIGN",        (0, 0), (-1, -1), "CENTER"),
+            ("LEFTPADDING",  (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING",   (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        elements.append(upsell_outer)
+
+        # Rule + breathing room before the secondary CTA
+        elements.append(Spacer(1, 0.35 * inch))
+        rule = Table([[""]], colWidths=[4.0 * inch], rowHeights=[0.01 * inch])
+        rule.setStyle(TableStyle([
+            ("LINEABOVE", (0, 0), (-1, 0), 0.5, RULE_GRAY),
+        ]))
+        rule_outer = Table([[rule]], colWidths=[6.5 * inch])
+        rule_outer.setStyle(TableStyle([
+            ("ALIGN",        (0, 0), (-1, -1), "CENTER"),
+            ("LEFTPADDING",  (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING",   (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        elements.append(rule_outer)
+        elements.append(Spacer(1, 0.25 * inch))
+
     elements.append(Paragraph(_esc(cta.get("headline", "")), styles["cta_headline"]))
 
     primary_url = cta.get("primary_url", "")
@@ -866,7 +954,12 @@ def build_pdf(audit_result, firmographics, output_path, mode=None, answers=None,
             story.extend(_ai_action_plan_section(ai_recs, styles))
             story.extend(_ai_roi_section(ai_recs, styles))
         else:
-            story.extend(_recommendations_section(audit_result, styles))
+            # Canned fallback path (no ANTHROPIC_API_KEY). Previously this
+            # rendered _recommendations_section AND _action_plan_section,
+            # which showed the SAME six items in two different layouts —
+            # padding that made the paid PDF look longer but undermined
+            # perceived value. Keep only the 30/60/90 action plan; it's
+            # more structured and less repetitive.
             story.append(PageBreak())
             story.extend(_action_plan_section(audit_result, styles))
 

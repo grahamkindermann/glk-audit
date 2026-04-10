@@ -765,7 +765,15 @@ def _render_cta():
 
 def _render_downloads(result, firm, answers, ai_recs=None, previous_audit=None):
     st.markdown("---")
-    pdf_bytes = _build_pdf_bytes(result, firm, answers, ai_recs=ai_recs, previous_audit=previous_audit)
+    # Tier-aware PDF mode: paid users with the pdf_full feature get the
+    # advisory variant (opportunities, AI analyses, 30/60/90 action plan).
+    # Free users get the lead_magnet variant (diagnosis + risks + benchmarks
+    # + a CTA upsell to the Full Report). This is the per-user override of
+    # the global AUDIT_MODE env var — without it, tier has no effect on the
+    # downloaded PDF.
+    pdf_mode = "advisory" if _user_has_feature("pdf_full") else "lead_magnet"
+    pdf_bytes = _build_pdf_bytes(result, firm, answers, ai_recs=ai_recs,
+                                 previous_audit=previous_audit, mode=pdf_mode)
     filename = _pdf_filename(firm)
 
     col1, col2 = st.columns(2)
@@ -787,13 +795,19 @@ def _render_downloads(result, firm, answers, ai_recs=None, previous_audit=None):
         )
 
 
-def _build_pdf_bytes(result, firm, answers, ai_recs=None, previous_audit=None):
-    """Render the PDF to a tempfile, read it back, clean up, return bytes."""
+def _build_pdf_bytes(result, firm, answers, ai_recs=None, previous_audit=None,
+                     mode=None):
+    """Render the PDF to a tempfile, read it back, clean up, return bytes.
+
+    mode: "lead_magnet" | "advisory" | None. If None, build_pdf falls back
+    to the AUDIT_MODE env var. Callers should pass mode explicitly based on
+    the user's tier so free and paid users get different deliverables.
+    """
     tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
     tmp_path = tmp.name
     tmp.close()
     try:
-        build_pdf(result, firm, tmp_path, answers=answers,
+        build_pdf(result, firm, tmp_path, mode=mode, answers=answers,
                   ai_recommendations=ai_recs, previous_audit=previous_audit)
         with open(tmp_path, "rb") as f:
             return f.read()
