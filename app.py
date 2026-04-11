@@ -105,6 +105,39 @@ def _user_has_feature(feature):
     return has_feature(_get_user_tier(), feature)
 
 
+def _get_cached_checkout_url(price_id, billing_mode):
+    """Return a Stripe checkout URL for this user + price, cached in
+    session state so we don't call the Stripe API on every rerun.
+
+    Returns None if the user isn't logged in, Stripe isn't configured,
+    or the API call fails.
+    """
+    if not stripe_is_configured():
+        return None
+    user_id = st.session_state.get("auth_user_id")
+    if not user_id or not price_id:
+        return None
+
+    cache_key = f"_checkout_url:{price_id}:{billing_mode}"
+    cached = st.session_state.get(cache_key)
+    if cached:
+        return cached
+
+    user_email = st.session_state.get("auth_email", "")
+    base_url = os.environ.get("APP_URL", "https://structural-audit.streamlit.app")
+    checkout_url = create_checkout_session(
+        user_id=user_id,
+        user_email=user_email,
+        price_id=price_id,
+        success_url=f"{base_url}/?checkout=success",
+        cancel_url=f"{base_url}/?checkout=cancel",
+        mode=billing_mode,
+    )
+    if checkout_url:
+        st.session_state[cache_key] = checkout_url
+    return checkout_url
+
+
 def _render_upgrade_prompt(feature_label, target_tier="report"):
     """Show an upgrade prompt when a user hits a gated feature.
 
@@ -129,26 +162,14 @@ def _render_upgrade_prompt(feature_label, target_tier="report"):
         f"historical tracking, and the complete PDF report."
     )
 
-    if stripe_is_configured() and st.session_state.get("auth_user_id") and price_id:
-        btn_label = f"Unlock {tier_name}: {price_str}"
-        if st.button(btn_label, key=f"upgrade_{target_tier}_{feature_label}",
-                     type="primary", use_container_width=True):
-            user_email = st.session_state.get("auth_email", "")
-            user_id = st.session_state["auth_user_id"]
-            # Build success/cancel URLs
-            base_url = os.environ.get("APP_URL", "https://structural-audit.streamlit.app")
-            checkout_url = create_checkout_session(
-                user_id=user_id,
-                user_email=user_email,
-                price_id=price_id,
-                success_url=f"{base_url}/?checkout=success",
-                cancel_url=f"{base_url}/?checkout=cancel",
-                mode=billing_mode,
-            )
-            if checkout_url:
-                st.markdown(f"[Complete checkout →]({checkout_url})")
-            else:
-                st.error("Unable to create checkout session. Please try again.")
+    btn_label = f"Unlock {tier_name}: {price_str}"
+    checkout_url = _get_cached_checkout_url(price_id, billing_mode)
+    if checkout_url:
+        # One-click redirect to Stripe Checkout.
+        st.link_button(btn_label, checkout_url, type="primary",
+                       use_container_width=True)
+    elif not st.session_state.get("auth_user_id") and stripe_is_configured():
+        st.caption("Sign in (sidebar) to purchase.")
 
 
 # ---------------------------------------------------------------------------
@@ -426,11 +447,17 @@ def render_results():
                 _render_action_plan(result["action_plan"])
         else:
             _render_upgrade_prompt("AI-powered analysis & action plan")
-    elif industry:
+    else:
+        # Lead-magnet mode: still show the primary value-prop upsell
+        # (AI consulting memo) and benchmarks upsell. Without these the
+        # free flow has no inline gateway to the Full Report.
         if can_benchmarks:
-            _render_benchmark_comparison(answers, industry)
+            if industry:
+                _render_benchmark_comparison(answers, industry)
         else:
             _render_upgrade_prompt("Industry benchmarks")
+        if not can_ai:
+            _render_upgrade_prompt("AI-powered analysis & action plan")
 
     # Regenerate button (advisory mode with API key + feature)
     if MODE == "advisory" and os.environ.get("ANTHROPIC_API_KEY") and can_ai:
@@ -779,9 +806,10 @@ def _render_full_report_purchase(cta):
     """Prominent Full Report purchase CTA rendered on the results page.
 
     Uses the upsell_* keys from the CTA config for copy. If the user is
-    logged in and Stripe is configured, renders a direct checkout button.
-    Otherwise falls back to the upsell_url link (so anonymous users still
-    see the offer and can click through).
+    logged in and Stripe is configured, renders a one-click link_button
+    that takes them straight to Stripe Checkout. Otherwise falls back to
+    upsell_url (so anonymous users still see the offer and can click
+    through).
     """
     headline = cta.get("upsell_headline") or "Unlock the Full Report"
     body = cta.get("upsell_body") or (
@@ -799,39 +827,47 @@ def _render_full_report_purchase(cta):
     st.subheader(headline)
     st.write(body)
 
-    user_id = st.session_state.get("auth_user_id")
-
-    if stripe_is_configured() and user_id and price_id:
-        # Logged-in path: direct Stripe checkout button.
-        if st.button(label, key="purchase_full_report",
-                     type="primary", use_container_width=True):
-            user_email = st.session_state.get("auth_email", "")
-            base_url = os.environ.get("APP_URL",
-                                      "https://structural-audit.streamlit.app")
-            checkout_url = create_checkout_session(
-                user_id=user_id,
-                user_email=user_email,
-                price_id=price_id,
-                success_url=f"{base_url}/?checkout=success",
-                cancel_url=f"{base_url}/?checkout=cancel",
-                mode=billing_mode,
-            )
-            if checkout_url:
-                st.markdown(f"[Complete checkout →]({checkout_url})")
-            else:
-                st.error("Unable to create checkout session. Please try again.")
-    elif not user_id:
+    checkout_url = _get_cached_checkout_url(price_id, billing_mode)
+    if checkout_url:
+        # One-click redirect to Stripe Checkout.
+        st.link_button(label, checkout_url, type="primary",
+                       use_container_width=True)
+    elif not st.session_state.get("auth_user_id"):
         # Anonymous path: prompt to sign in, plus a fallback link.
         st.info(
             "Sign in (sidebar) to purchase the Full Report, or click below "
             "to see what's included."
         )
         if fallback_url:
-            st.markdown(f"[{label}]({fallback_url})")
+            st.link_button(label, fallback_url, use_container_width=True)
     else:
         # Logged in but Stripe not configured: fallback link.
         if fallback_url:
-            st.markdown(f"[{label}]({fallback_url})")
+            st.link_button(label, fallback_url, type="primary",
+                           use_container_width=True)
+
+
+def _pdf_cache_signature(result, firm, answers, ai_recs, previous_audit, mode):
+    """Build a stable hash signature for PDF inputs. Used to cache PDF
+    bytes in session_state so we don't regenerate on every rerun."""
+    import hashlib
+    import json
+
+    def _safe(obj):
+        try:
+            return json.dumps(obj, sort_keys=True, default=str)
+        except Exception:
+            return repr(obj)
+
+    payload = "|".join([
+        _safe(result),
+        _safe(firm),
+        _safe(answers),
+        _safe(ai_recs),
+        _safe(previous_audit),
+        mode or "",
+    ])
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _render_downloads(result, firm, answers, ai_recs=None, previous_audit=None):
@@ -843,8 +879,18 @@ def _render_downloads(result, firm, answers, ai_recs=None, previous_audit=None):
     # the global AUDIT_MODE env var. Without it, tier has no effect on the
     # downloaded PDF.
     pdf_mode = "advisory" if _user_has_feature("pdf_full") else "lead_magnet"
-    pdf_bytes = _build_pdf_bytes(result, firm, answers, ai_recs=ai_recs,
-                                 previous_audit=previous_audit, mode=pdf_mode)
+
+    # Cache PDF bytes in session_state keyed on a hash of the inputs.
+    # Without this, the PDF is rebuilt (including charts/tables) on every
+    # rerun of the results page, which slows down the whole flow.
+    sig = _pdf_cache_signature(result, firm, answers, ai_recs,
+                                previous_audit, pdf_mode)
+    cache_key = f"_pdf_bytes:{sig}"
+    pdf_bytes = st.session_state.get(cache_key)
+    if pdf_bytes is None:
+        pdf_bytes = _build_pdf_bytes(result, firm, answers, ai_recs=ai_recs,
+                                     previous_audit=previous_audit, mode=pdf_mode)
+        st.session_state[cache_key] = pdf_bytes
     filename = _pdf_filename(firm)
 
     col1, col2 = st.columns(2)
@@ -1344,6 +1390,56 @@ def render_nav():
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _handle_checkout_return():
+    """Detect ?checkout=success or ?checkout=cancel in the URL and show
+    a confirmation banner. Called once per page load from main().
+
+    On success: clear any stale checkout URL cache (so the user doesn't
+    get redirected to a used session) and surface a celebration message
+    above the normal page content.
+
+    On cancel: friendly "no charge was made" message.
+    """
+    try:
+        params = st.query_params
+    except Exception:
+        return
+
+    checkout = params.get("checkout")
+    # st.query_params returns a single string in newer Streamlit, but can
+    # also return a list in older versions; handle both.
+    if isinstance(checkout, list):
+        checkout = checkout[0] if checkout else None
+
+    if not checkout:
+        return
+
+    if checkout == "success":
+        # Clear cached checkout URLs so a future purchase uses a fresh
+        # Stripe session (old ones are one-shot and will 404 if reused).
+        for k in list(st.session_state.keys()):
+            if k.startswith("_checkout_url:") or k.startswith("_pdf_bytes:"):
+                del st.session_state[k]
+        st.success(
+            "**Payment received. Your Full Report is unlocked.** "
+            "Your results below now include the full AI consulting memo, "
+            "dimension analyses, 30/60/90 action plan, and benchmarks. "
+            "Scroll down to download."
+        )
+    elif checkout == "cancel":
+        st.info(
+            "Checkout canceled. No charge was made. You can still "
+            "purchase the Full Report from the results page below."
+        )
+
+    # Clean up the URL so the banner only shows once per return trip.
+    try:
+        if "checkout" in params:
+            del params["checkout"]
+    except Exception:
+        pass
+
+
 def main():
     st.set_page_config(
         page_title=f"{BRAND['wordmark']} Audit",
@@ -1355,6 +1451,9 @@ def main():
     _render_auth_sidebar()
 
     render_wordmark()
+
+    # Show checkout success/cancel banner if we just came back from Stripe.
+    _handle_checkout_return()
 
     # Dashboard view for logged-in users (before starting a new audit)
     if (st.session_state.get("auth_user_id")
