@@ -19,6 +19,7 @@ import re
 import tempfile
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from db_client import get_client, is_configured as db_is_configured
 from db_queries import (
@@ -1307,42 +1308,40 @@ def main():
     render_nav()
 
     # Scroll to top on every page render. Fires on every rerun, including
-    # after Next is clicked. The nonce (current_step) forces Streamlit to
-    # treat the HTML block as new content on every navigation so the script
-    # is re-injected and executed.
+    # after Next is clicked. Uses components.html (NOT st.html) because
+    # st.html sanitizes script tags and won't execute them. components.html
+    # embeds an iframe that runs JS, and on streamlit.app the iframe is
+    # same-origin so window.parent access is permitted.
+    # The nonce in the script body forces Streamlit to treat each render as
+    # a distinct component so the script is re-injected and re-executed.
     _scroll_nonce = st.session_state.get("current_step", 0)
-    st.html(
+    components.html(
         f"""
-        <div id="scroll-anchor-{_scroll_nonce}" style="display:none;"></div>
         <script>
+        // nonce-{_scroll_nonce}
         (function() {{
             function scrollAll() {{
-                try {{ window.scrollTo(0, 0); }} catch(e) {{}}
-                try {{ document.documentElement.scrollTop = 0; }} catch(e) {{}}
-                try {{ document.body.scrollTop = 0; }} catch(e) {{}}
                 try {{
                     var p = window.parent;
-                    if (p && p !== window) {{
-                        p.scrollTo(0, 0);
-                        var pdoc = p.document;
-                        if (pdoc) {{
-                            pdoc.documentElement.scrollTop = 0;
-                            pdoc.body.scrollTop = 0;
-                            var sels = [
-                                '[data-testid="stMain"]',
-                                '[data-testid="stAppViewContainer"]',
-                                '[data-testid="ScrollToBottomContainer"]',
-                                'section.main',
-                                'main',
-                                '.main'
-                            ];
-                            for (var i = 0; i < sels.length; i++) {{
-                                var el = pdoc.querySelector(sels[i]);
-                                if (el) {{ el.scrollTop = 0; }}
-                            }}
-                        }}
+                    if (!p) return;
+                    p.scrollTo(0, 0);
+                    var pdoc = p.document;
+                    if (!pdoc) return;
+                    pdoc.documentElement.scrollTop = 0;
+                    pdoc.body.scrollTop = 0;
+                    var sels = [
+                        '[data-testid="stMain"]',
+                        '[data-testid="stAppViewContainer"]',
+                        'section.main',
+                        'main'
+                    ];
+                    for (var i = 0; i < sels.length; i++) {{
+                        var el = pdoc.querySelector(sels[i]);
+                        if (el) {{ el.scrollTop = 0; }}
                     }}
-                }} catch(e) {{}}
+                }} catch(e) {{
+                    console.warn('scroll-to-top failed:', e);
+                }}
             }}
             scrollAll();
             if (window.requestAnimationFrame) {{
@@ -1355,7 +1354,8 @@ def main():
             setTimeout(scrollAll, 700);
         }})();
         </script>
-        """
+        """,
+        height=0,
     )
 
     st.caption(f"Rubric v{RUBRIC_VERSION}")
