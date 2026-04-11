@@ -1307,94 +1307,124 @@ def main():
 
     render_nav()
 
-    # Scroll to top on every page render. Fires on every rerun, including
-    # after Next / See results is clicked. Uses components.html (NOT st.html)
-    # because st.html sanitizes script tags. components.html embeds an
-    # iframe that runs JS; on streamlit.app the iframe is same-origin so
-    # window.parent access works.
+    # Scroll to top ONLY when the step has actually changed (user clicked
+    # Back, Next, or See results). On same-step reruns (e.g. clicking a
+    # radio button to answer a question), this component is NOT injected,
+    # so there's nothing to interfere with the user's scroll position.
     #
-    # The results page can take 5-15 seconds to render (Claude API call,
-    # charts, tables), and Streamlit tries to restore the previous scroll
-    # position mid-render. To defeat that, we use a MutationObserver to
-    # force scrollTop=0 every time the parent DOM mutates, until the page
-    # settles (no mutations for 400ms) or a 12s hard cap expires.
-    _scroll_nonce = st.session_state.get("current_step", 0)
-    components.html(
-        f"""
-        <script>
-        // nonce-{_scroll_nonce}
-        (function() {{
-            var SELECTORS = [
-                '[data-testid="stMain"]',
-                '[data-testid="stAppViewContainer"]',
-                'section.main',
-                'main'
-            ];
-            function scrollAll() {{
+    # Two-layer guard:
+    #   1. Python: only render the component when current_step differs
+    #      from the step we rendered the scroller on last time.
+    #   2. JS: the MutationObserver disconnects immediately on any user
+    #      interaction (wheel, touch, key, click) so if mid-render the
+    #      user starts scrolling, we stop fighting them.
+    _current_step = st.session_state.get("current_step", 0)
+    _last_scrolled_step = st.session_state.get("_last_scrolled_step")
+    if _last_scrolled_step != _current_step:
+        st.session_state["_last_scrolled_step"] = _current_step
+        components.html(
+            f"""
+            <script>
+            // nonce-{_current_step}
+            (function() {{
+                var SELECTORS = [
+                    '[data-testid="stMain"]',
+                    '[data-testid="stAppViewContainer"]',
+                    'section.main',
+                    'main'
+                ];
+                function scrollAll() {{
+                    try {{
+                        var p = window.parent;
+                        if (!p) return;
+                        p.scrollTo(0, 0);
+                        var pdoc = p.document;
+                        if (!pdoc) return;
+                        pdoc.documentElement.scrollTop = 0;
+                        pdoc.body.scrollTop = 0;
+                        for (var i = 0; i < SELECTORS.length; i++) {{
+                            var el = pdoc.querySelector(SELECTORS[i]);
+                            if (el) {{ el.scrollTop = 0; }}
+                        }}
+                    }} catch(e) {{
+                        console.warn('scroll-to-top failed:', e);
+                    }}
+                }}
+
+                scrollAll();
+                if (window.requestAnimationFrame) {{
+                    window.requestAnimationFrame(scrollAll);
+                }}
+                var delays = [0, 50, 150, 350, 700, 1200, 2000, 3500, 5000];
+                var timers = [];
+                for (var i = 0; i < delays.length; i++) {{
+                    timers.push(setTimeout(scrollAll, delays[i]));
+                }}
+
+                // MutationObserver that bails out on ANY user interaction.
                 try {{
                     var p = window.parent;
-                    if (!p) return;
-                    p.scrollTo(0, 0);
-                    var pdoc = p.document;
-                    if (!pdoc) return;
-                    pdoc.documentElement.scrollTop = 0;
-                    pdoc.body.scrollTop = 0;
-                    for (var i = 0; i < SELECTORS.length; i++) {{
-                        var el = pdoc.querySelector(SELECTORS[i]);
-                        if (el) {{ el.scrollTop = 0; }}
-                    }}
-                }} catch(e) {{
-                    console.warn('scroll-to-top failed:', e);
-                }}
-            }}
-
-            // Fire immediately and on a short setTimeout cascade.
-            scrollAll();
-            if (window.requestAnimationFrame) {{
-                window.requestAnimationFrame(scrollAll);
-            }}
-            var delays = [0, 50, 150, 350, 700, 1200, 2000, 3000, 5000, 8000, 12000];
-            for (var i = 0; i < delays.length; i++) {{
-                setTimeout(scrollAll, delays[i]);
-            }}
-
-            // MutationObserver: while the parent DOM is still mutating
-            // (e.g., slow Claude API render on the results page), keep
-            // forcing scrollTop=0. Give up after 400ms of quiet or 15s
-            // total, whichever comes first.
-            try {{
-                var p = window.parent;
-                if (p && p.document && p.MutationObserver) {{
+                    if (!p || !p.document || !p.MutationObserver) return;
                     var target = p.document.querySelector('[data-testid="stAppViewContainer"]')
                               || p.document.querySelector('[data-testid="stMain"]')
                               || p.document.body;
-                    if (target) {{
-                        var quietTimer = null;
-                        var hardStop = setTimeout(function() {{
-                            if (obs) obs.disconnect();
-                        }}, 15000);
-                        var obs = new p.MutationObserver(function() {{
-                            scrollAll();
-                            if (quietTimer) clearTimeout(quietTimer);
-                            quietTimer = setTimeout(function() {{
-                                obs.disconnect();
-                                clearTimeout(hardStop);
-                            }}, 400);
-                        }});
-                        obs.observe(target, {{
-                            childList: true,
-                            subtree: true,
-                        }});
+                    if (!target) return;
+
+                    var stopped = false;
+                    var quietTimer = null;
+                    var hardStop = null;
+                    var obs = new p.MutationObserver(function() {{
+                        if (stopped) return;
+                        scrollAll();
+                        if (quietTimer) clearTimeout(quietTimer);
+                        quietTimer = setTimeout(stop, 400);
+                    }});
+
+                    function stop() {{
+                        if (stopped) return;
+                        stopped = true;
+                        try {{ obs.disconnect(); }} catch(e) {{}}
+                        if (quietTimer) clearTimeout(quietTimer);
+                        if (hardStop) clearTimeout(hardStop);
+                        for (var i = 0; i < timers.length; i++) {{
+                            clearTimeout(timers[i]);
+                        }}
+                        try {{
+                            p.removeEventListener('wheel', stop, true);
+                            p.removeEventListener('touchstart', stop, true);
+                            p.removeEventListener('keydown', stop, true);
+                            p.removeEventListener('mousedown', stop, true);
+                        }} catch(e) {{}}
                     }}
+
+                    // Disconnect immediately on any user interaction.
+                    try {{
+                        p.addEventListener('wheel', stop, {{ capture: true, passive: true }});
+                        p.addEventListener('touchstart', stop, {{ capture: true, passive: true }});
+                        p.addEventListener('keydown', stop, true);
+                        p.addEventListener('mousedown', stop, true);
+                    }} catch(e) {{
+                        p.addEventListener('wheel', stop, true);
+                        p.addEventListener('touchstart', stop, true);
+                        p.addEventListener('keydown', stop, true);
+                        p.addEventListener('mousedown', stop, true);
+                    }}
+
+                    // Hard cap: 5 seconds no matter what.
+                    hardStop = setTimeout(stop, 5000);
+
+                    obs.observe(target, {{
+                        childList: true,
+                        subtree: true,
+                    }});
+                }} catch(e) {{
+                    console.warn('mutation observer setup failed:', e);
                 }}
-            }} catch(e) {{
-                console.warn('mutation observer setup failed:', e);
-            }}
-        }})();
-        </script>
-        """,
-        height=0,
-    )
+            }})();
+            </script>
+            """,
+            height=0,
+        )
 
     st.caption(f"Rubric v{RUBRIC_VERSION}")
 
