@@ -185,6 +185,190 @@ def init_state():
         st.session_state.saved_answers = {}
     if "saved_firm" not in st.session_state:
         st.session_state.saved_firm = {}
+    if "_draft_restore_attempted" not in st.session_state:
+        st.session_state._draft_restore_attempted = False
+
+
+# ---------------------------------------------------------------------------
+# localStorage draft persistence (light option for #6)
+#
+# Saves in-progress audit state to the browser's localStorage so anonymous
+# users don't lose their answers when they close the tab. Drafts expire
+# after 7 days.
+#
+# Flow:
+#   1. After every step change, _save_draft_to_browser() injects JS that
+#      writes {step, saved_answers, saved_firm, saved_at} to localStorage
+#      under key "glk_audit_draft_v1".
+#   2. On first page load (once per session), _restore_draft_from_browser()
+#      injects JS that reads localStorage and — if a fresh draft exists and
+#      the user is on a blank step 0 — sets ?restore=<base64> and reloads
+#      the page. Python picks up the query param, decodes, populates
+#      session_state, and removes the param.
+# ---------------------------------------------------------------------------
+
+DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000  # 7 days
+DRAFT_LOCAL_STORAGE_KEY = "glk_audit_draft_v1"
+
+
+def _save_draft_to_browser():
+    """Write current in-progress audit state to the browser's localStorage.
+
+    Safe to call on every step change. If the user clears everything via
+    Start over, saved_answers / saved_firm are empty and we remove the
+    localStorage entry instead.
+    """
+    import json as _json
+    step = int(st.session_state.get("current_step", 0))
+    saved_answers = st.session_state.get("saved_answers") or {}
+    saved_firm = st.session_state.get("saved_firm") or {}
+
+    # Nothing meaningful to save yet? Clear any stale draft.
+    if step == 0 and not saved_answers and not saved_firm:
+        components.html(
+            """
+            <script>
+            try {
+                window.parent.localStorage.removeItem('glk_audit_draft_v1');
+            } catch(e) {}
+            </script>
+            """,
+            height=0,
+        )
+        return
+
+    payload = _json.dumps({
+        "current_step": step,
+        "saved_answers": saved_answers,
+        "saved_firm": saved_firm,
+        "saved_at": None,  # set by JS so we use the browser clock
+    })
+    components.html(
+        f"""
+        <script>
+        try {{
+            var data = {payload};
+            data.saved_at = Date.now();
+            window.parent.localStorage.setItem(
+                'glk_audit_draft_v1',
+                JSON.stringify(data)
+            );
+        }} catch(e) {{
+            console.warn('draft save failed:', e);
+        }}
+        </script>
+        """,
+        height=0,
+    )
+
+
+def _restore_draft_from_browser():
+    """On first page load, try to restore an in-progress draft from the
+    browser's localStorage.
+
+    Two-phase flow:
+      Phase A: No ?restore param in URL. If user is on a blank step 0,
+        inject JS that reads localStorage, base64-encodes a fresh draft,
+        and reloads the page with ?restore=<b64>.
+      Phase B: ?restore=<b64> is present. Decode, populate session_state,
+        remove the query param, and return True so the caller can rerun
+        to render the restored state.
+
+    Returns True if session state was just restored (caller should rerun).
+    Never attempts a restore more than once per session.
+    """
+    if st.session_state.get("_draft_restore_attempted"):
+        return False
+
+    import base64
+    import json as _json
+
+    try:
+        params = st.query_params
+    except Exception:
+        return False
+
+    # Phase B: we just came back from the JS reload with a payload.
+    restore_payload = params.get("restore")
+    if isinstance(restore_payload, list):
+        restore_payload = restore_payload[0] if restore_payload else None
+
+    if restore_payload:
+        st.session_state._draft_restore_attempted = True
+        try:
+            decoded = base64.urlsafe_b64decode(restore_payload.encode("utf-8"))
+            data = _json.loads(decoded.decode("utf-8"))
+            step = int(data.get("current_step") or 0)
+            saved_answers = data.get("saved_answers") or {}
+            saved_firm = data.get("saved_firm") or {}
+            # Only restore if the payload is non-trivial.
+            if step > 0 or saved_answers or saved_firm:
+                st.session_state.current_step = step
+                st.session_state.saved_answers = saved_answers
+                st.session_state.saved_firm = saved_firm
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"draft restore failed: {e}")
+        # Always strip the query param so we don't loop.
+        try:
+            if "restore" in params:
+                del params["restore"]
+        except Exception:
+            pass
+        return True
+
+    # Phase A: only try to restore if session is fresh (step 0, no state).
+    step = int(st.session_state.get("current_step", 0))
+    if step != 0:
+        st.session_state._draft_restore_attempted = True
+        return False
+    if st.session_state.get("saved_answers") or st.session_state.get("saved_firm"):
+        st.session_state._draft_restore_attempted = True
+        return False
+
+    # Inject JS that checks localStorage and redirects with ?restore=<b64>
+    # if a fresh draft exists.
+    st.session_state._draft_restore_attempted = True
+    components.html(
+        f"""
+        <script>
+        (function() {{
+            try {{
+                var p = window.parent;
+                if (!p || !p.localStorage) return;
+                var raw = p.localStorage.getItem('glk_audit_draft_v1');
+                if (!raw) return;
+                var data;
+                try {{
+                    data = JSON.parse(raw);
+                }} catch(e) {{
+                    p.localStorage.removeItem('glk_audit_draft_v1');
+                    return;
+                }}
+                var age = Date.now() - (data.saved_at || 0);
+                if (age > {DRAFT_MAX_AGE_MS}) {{
+                    p.localStorage.removeItem('glk_audit_draft_v1');
+                    return;
+                }}
+                var step = data.current_step || 0;
+                var hasAnswers = data.saved_answers && Object.keys(data.saved_answers).length > 0;
+                var hasFirm = data.saved_firm && Object.keys(data.saved_firm).length > 0;
+                if (step === 0 && !hasAnswers && !hasFirm) return;
+                // base64-url-encode and redirect
+                var json = JSON.stringify(data);
+                var b64 = btoa(unescape(encodeURIComponent(json)))
+                    .replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+                var url = p.location.pathname + '?restore=' + b64;
+                p.location.replace(url);
+            }} catch(e) {{
+                console.warn('draft restore failed:', e);
+            }}
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+    return False
 
 
 def answer_key(qid):
@@ -217,6 +401,12 @@ def goto_step(delta):
     st.session_state.current_step = max(
         0, min(TOTAL_STEPS - 1, st.session_state.current_step + delta)
     )
+    # Persist the in-progress draft to the browser's localStorage so
+    # anonymous users don't lose their work if they close the tab.
+    try:
+        _save_draft_to_browser()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -949,7 +1139,17 @@ def _reset_state():
         del st.session_state[key]
     st.session_state.saved_answers = {}
     st.session_state.saved_firm = {}
+    st.session_state.current_step = 0
+    # Mark restore as already attempted so we don't immediately re-hydrate
+    # the draft we just tried to clear.
+    st.session_state._draft_restore_attempted = True
     st.session_state.update(preserved)
+    # Clear the localStorage draft entry — _save_draft_to_browser()
+    # removes the key when state is blank.
+    try:
+        _save_draft_to_browser()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -1446,6 +1646,16 @@ def main():
         layout="centered",
     )
     init_state()
+
+    # Try to restore an in-progress draft from the browser's localStorage.
+    # On first page load, this injects JS that redirects with ?restore=<b64>
+    # if a fresh draft is found. On the redirected load, it decodes the
+    # payload into session_state and returns True so we rerun immediately.
+    try:
+        if _restore_draft_from_browser():
+            st.rerun()
+    except Exception:
+        pass
 
     # Auth sidebar (only renders when Supabase is configured)
     _render_auth_sidebar()
