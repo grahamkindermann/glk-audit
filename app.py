@@ -1308,18 +1308,28 @@ def main():
     render_nav()
 
     # Scroll to top on every page render. Fires on every rerun, including
-    # after Next is clicked. Uses components.html (NOT st.html) because
-    # st.html sanitizes script tags and won't execute them. components.html
-    # embeds an iframe that runs JS, and on streamlit.app the iframe is
-    # same-origin so window.parent access is permitted.
-    # The nonce in the script body forces Streamlit to treat each render as
-    # a distinct component so the script is re-injected and re-executed.
+    # after Next / See results is clicked. Uses components.html (NOT st.html)
+    # because st.html sanitizes script tags. components.html embeds an
+    # iframe that runs JS; on streamlit.app the iframe is same-origin so
+    # window.parent access works.
+    #
+    # The results page can take 5-15 seconds to render (Claude API call,
+    # charts, tables), and Streamlit tries to restore the previous scroll
+    # position mid-render. To defeat that, we use a MutationObserver to
+    # force scrollTop=0 every time the parent DOM mutates, until the page
+    # settles (no mutations for 400ms) or a 12s hard cap expires.
     _scroll_nonce = st.session_state.get("current_step", 0)
     components.html(
         f"""
         <script>
         // nonce-{_scroll_nonce}
         (function() {{
+            var SELECTORS = [
+                '[data-testid="stMain"]',
+                '[data-testid="stAppViewContainer"]',
+                'section.main',
+                'main'
+            ];
             function scrollAll() {{
                 try {{
                     var p = window.parent;
@@ -1329,29 +1339,57 @@ def main():
                     if (!pdoc) return;
                     pdoc.documentElement.scrollTop = 0;
                     pdoc.body.scrollTop = 0;
-                    var sels = [
-                        '[data-testid="stMain"]',
-                        '[data-testid="stAppViewContainer"]',
-                        'section.main',
-                        'main'
-                    ];
-                    for (var i = 0; i < sels.length; i++) {{
-                        var el = pdoc.querySelector(sels[i]);
+                    for (var i = 0; i < SELECTORS.length; i++) {{
+                        var el = pdoc.querySelector(SELECTORS[i]);
                         if (el) {{ el.scrollTop = 0; }}
                     }}
                 }} catch(e) {{
                     console.warn('scroll-to-top failed:', e);
                 }}
             }}
+
+            // Fire immediately and on a short setTimeout cascade.
             scrollAll();
             if (window.requestAnimationFrame) {{
                 window.requestAnimationFrame(scrollAll);
             }}
-            setTimeout(scrollAll, 0);
-            setTimeout(scrollAll, 50);
-            setTimeout(scrollAll, 150);
-            setTimeout(scrollAll, 350);
-            setTimeout(scrollAll, 700);
+            var delays = [0, 50, 150, 350, 700, 1200, 2000, 3000, 5000, 8000, 12000];
+            for (var i = 0; i < delays.length; i++) {{
+                setTimeout(scrollAll, delays[i]);
+            }}
+
+            // MutationObserver: while the parent DOM is still mutating
+            // (e.g., slow Claude API render on the results page), keep
+            // forcing scrollTop=0. Give up after 400ms of quiet or 15s
+            // total, whichever comes first.
+            try {{
+                var p = window.parent;
+                if (p && p.document && p.MutationObserver) {{
+                    var target = p.document.querySelector('[data-testid="stAppViewContainer"]')
+                              || p.document.querySelector('[data-testid="stMain"]')
+                              || p.document.body;
+                    if (target) {{
+                        var quietTimer = null;
+                        var hardStop = setTimeout(function() {{
+                            if (obs) obs.disconnect();
+                        }}, 15000);
+                        var obs = new p.MutationObserver(function() {{
+                            scrollAll();
+                            if (quietTimer) clearTimeout(quietTimer);
+                            quietTimer = setTimeout(function() {{
+                                obs.disconnect();
+                                clearTimeout(hardStop);
+                            }}, 400);
+                        }});
+                        obs.observe(target, {{
+                            childList: true,
+                            subtree: true,
+                        }});
+                    }}
+                }}
+            }} catch(e) {{
+                console.warn('mutation observer setup failed:', e);
+            }}
         }})();
         </script>
         """,
