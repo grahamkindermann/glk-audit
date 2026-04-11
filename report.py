@@ -1,5 +1,5 @@
 """
-report.py — PDF generation for the Structural Advantage Business Audit.
+report.py: PDF generation for the Structural Advantage Business Audit.
 
 Pure function interface:
     build_pdf(audit_result, firmographics, output_path, mode=None) -> output_path
@@ -197,7 +197,7 @@ def _build_radar(audit_result):
     dims = list(audit_result["dimensions"].values())
     labels = [d["name"] for d in dims]
     # Insufficient-Data dimensions plot as 0 on the radar; the dimension
-    # table is the authoritative presentation (shows "—" and the label).
+    # table is the authoritative presentation (shows "-" and the label).
     values = [d["score"] if d["score"] is not None else 0 for d in dims]
 
     n = len(values)
@@ -249,9 +249,9 @@ def _cover_page(firmographics, mode, styles):
 
     elements.append(Spacer(1, 1.6 * inch))
 
-    company = (firmographics.get("company_name") or "").strip() or "—"
-    revenue = firmographics.get("revenue_band") or "—"
-    industry = firmographics.get("industry") or "—"
+    company = (firmographics.get("company_name") or "").strip() or "-"
+    revenue = firmographics.get("revenue_band") or "-"
+    industry = firmographics.get("industry") or "-"
 
     elements.append(Paragraph(_esc(company), styles["cover_company"]))
     elements.append(Spacer(1, 0.08 * inch))
@@ -277,7 +277,7 @@ def _exec_summary(audit_result, styles):
     elements.append(Paragraph("Executive Summary", styles["h1"]))
 
     overall = audit_result["overall"]
-    score_str = f"{overall['score']:.0f}" if overall["score"] is not None else "—"
+    score_str = f"{overall['score']:.0f}" if overall["score"] is not None else "-"
     band_label = overall["band_label"] or INSUFFICIENT_DATA_LABEL
     band_id = overall.get("band_id")
 
@@ -306,7 +306,7 @@ def _dimension_table(audit_result, styles):
     rows = [header]
     for _dim_id, dim in audit_result["dimensions"].items():
         if dim["insufficient"] or dim["score"] is None:
-            score_str = "—"
+            score_str = "-"
             band_str = INSUFFICIENT_DATA_LABEL
         else:
             score_str = f"{dim['score']:.0f}"
@@ -536,9 +536,9 @@ def _action_plan_section(audit_result, styles):
     elements.append(Spacer(1, 0.2 * inch))
     elements.append(Paragraph("30 / 60 / 90 Day Action Plan", styles["h1"]))
 
-    for phase, label in [("30_day", "30 Days \u2014 Quick Wins"),
-                          ("60_day", "60 Days \u2014 Systemic Fixes"),
-                          ("90_day", "90 Days \u2014 Strategic Initiatives")]:
+    for phase, label in [("30_day", "30 Days: Quick Wins"),
+                          ("60_day", "60 Days: Systemic Fixes"),
+                          ("90_day", "90 Days: Strategic Initiatives")]:
         items = action_plan.get(phase, [])
         elements.append(Spacer(1, 0.1 * inch))
         elements.append(Paragraph(_esc(label), styles["h2"]))
@@ -735,9 +735,9 @@ def _ai_action_plan_section(ai_recs, styles):
     elements.append(Paragraph("30 / 60 / 90 Day Action Plan", styles["h1"]))
     elements.append(Spacer(1, 0.1 * inch))
 
-    for phase, label in [("30_day", "30 Days \u2014 Quick Wins"),
-                          ("60_day", "60 Days \u2014 Systemic Fixes"),
-                          ("90_day", "90 Days \u2014 Strategic Initiatives")]:
+    for phase, label in [("30_day", "30 Days: Quick Wins"),
+                          ("60_day", "60 Days: Systemic Fixes"),
+                          ("90_day", "90 Days: Strategic Initiatives")]:
         items = plan.get(phase, [])
         elements.append(Paragraph(_esc(label), styles["h2"]))
         if not items:
@@ -766,7 +766,7 @@ def _ai_roi_section(ai_recs, styles):
     if not estimates:
         return elements
     elements.append(Spacer(1, 0.15 * inch))
-    elements.append(Paragraph("Estimated ROI \u2014 Top Recommendations", styles["h1"]))
+    elements.append(Paragraph("Estimated ROI: Top Recommendations", styles["h1"]))
     elements.append(Spacer(1, 0.1 * inch))
 
     header = ["Recommendation", "Estimated Impact", "Confidence"]
@@ -852,7 +852,7 @@ def _progress_section(audit_result, previous_audit, styles):
                 f"{arrow} {delta:+.0f}",
             ])
         elif curr_s is not None:
-            rows.append([dim.get("name", dim_id), f"{curr_s:.0f}", "\u2014", "\u2014"])
+            rows.append([dim.get("name", dim_id), f"{curr_s:.0f}", "N/A", "N/A"])
 
     if len(rows) > 1:
         tbl = Table(rows, colWidths=[2.5 * inch, 1.2 * inch, 1.2 * inch, 1.2 * inch])
@@ -902,7 +902,7 @@ def build_pdf(audit_result, firmographics, output_path, mode=None, answers=None,
         rightMargin=0.75 * inch,
         topMargin=0.75 * inch,
         bottomMargin=0.75 * inch,
-        title=f"{BRAND['wordmark']} — {BRAND['cover_subtitle'].get(use_mode, '')}",
+        title=f"{BRAND['wordmark']}, {BRAND['cover_subtitle'].get(use_mode, '')}",
         author="GLK Holdings LLC",
     )
 
@@ -956,7 +956,7 @@ def build_pdf(audit_result, firmographics, output_path, mode=None, answers=None,
         else:
             # Canned fallback path (no ANTHROPIC_API_KEY). Previously this
             # rendered _recommendations_section AND _action_plan_section,
-            # which showed the SAME six items in two different layouts —
+            # which showed the SAME six items in two different layouts -
             # padding that made the paid PDF look longer but undermined
             # perceived value. Keep only the 30/60/90 action plan; it's
             # more structured and less repetitive.

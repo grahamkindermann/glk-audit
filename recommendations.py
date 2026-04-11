@@ -1,11 +1,11 @@
 """
-recommendations.py — AI-generated consulting memo via Claude API.
+recommendations.py: AI-generated consulting memo via Claude API.
 
 Pure function interface:
     generate_recommendations(result, firmographics, answers) -> dict or None
 
 If ANTHROPIC_API_KEY is not set, returns None (graceful degradation).
-If the API call fails, returns None and logs the error — never blocks the
+If the API call fails, returns None and logs the error, never blocks the
 results page.
 
 The returned dict has this shape:
@@ -50,7 +50,7 @@ TEMPERATURE = 0.3
 SYSTEM_PROMPT = """\
 You are a senior operating advisor at a private equity firm. You have just \
 reviewed a comprehensive business audit for a portfolio company. Your job is \
-to write a specific, actionable diagnostic memo — not generic advice.
+to write a specific, actionable diagnostic memo, not generic advice.
 
 Rules:
 - Reference the company's actual scores, answers, and benchmark gaps.
@@ -172,9 +172,9 @@ def _build_user_prompt(result, firmographics, answers, recommendation_history=No
     # Overall score
     overall = result["overall"]
     overall_line = (
-        f"Overall score: {overall['score']:.0f}/100 — {overall['band_label']}"
+        f"Overall score: {overall['score']:.0f}/100, {overall['band_label']}"
         if overall["score"] is not None
-        else f"Overall score: Insufficient data — {overall['band_label']}"
+        else f"Overall score: Insufficient data, {overall['band_label']}"
     )
 
     # Per-dimension scores
@@ -185,7 +185,7 @@ def _build_user_prompt(result, firmographics, answers, recommendation_history=No
             dim_lines.append(f"  - {dim['name']}: Insufficient Data")
         elif dr.get("score") is not None:
             dim_lines.append(
-                f"  - {dim['name']}: {dr['score']:.0f}/100 — {dr['band_label']}"
+                f"  - {dim['name']}: {dr['score']:.0f}/100, {dr['band_label']}"
             )
 
     # Top risks
@@ -308,13 +308,13 @@ def generate_recommendations(result, firmographics, answers, recommendation_hist
     Returns the structured dict on success, or None on failure / no API key.
     """
     if not ANTHROPIC_API_KEY:
-        logger.info("ANTHROPIC_API_KEY not set — skipping AI recommendations.")
+        logger.info("ANTHROPIC_API_KEY not set, skipping AI recommendations.")
         return None
 
     try:
         import anthropic
     except ImportError:
-        logger.warning("anthropic package not installed — skipping AI recommendations.")
+        logger.warning("anthropic package not installed, skipping AI recommendations.")
         return None
 
     user_prompt = _build_user_prompt(result, firmographics, answers,

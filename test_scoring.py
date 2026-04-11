@@ -1,5 +1,5 @@
 """
-test_scoring.py — Smoke test for scoring.py and rubric.py.
+test_scoring.py, Smoke test for scoring.py and rubric.py.
 
 Runs end-to-end against a deterministic synthetic answer set covering all
 39 question ids, exercises the N/A path via ai_04 and sw_06, and asserts
@@ -330,7 +330,7 @@ def test_blended_dimension_scoring():
     assert not per["insufficient"], "personnel should not be insufficient"
     assert per["score"] is not None, "personnel score should not be None"
 
-    # Run without industry (no benchmarks) — should still score via qual only
+    # Run without industry (no benchmarks), should still score via qual only
     result_no_ind = run_audit(answers, industry=None)
     per_no_ind = result_no_ind["dimensions"]["personnel"]
     assert per_no_ind["score"] is not None
@@ -481,7 +481,7 @@ def test_pdf_with_ai_recommendations():
                     "spend at 6% of revenue is within range but could be optimized."
                 ),
                 "recommendations": [
-                    "Audit all 20 tools — target consolidation to 12-14.",
+                    "Audit all 20 tools, target consolidation to 12-14.",
                     "Require SSO for any tool touching customer data.",
                 ],
             },

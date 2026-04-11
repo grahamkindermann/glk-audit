@@ -1,4 +1,4 @@
-# Structural Advantage Audit Platform — Build Roadmap
+# Structural Advantage Audit Platform, Build Roadmap
 
 ## Product Vision
 
@@ -31,7 +31,7 @@ Key principle: `core/` has ZERO dependency on Streamlit, Supabase, or Stripe. It
 
 ---
 
-## Phase 1 — v1.1 Cleanup (1-2 days)
+## Phase 1, v1.1 Cleanup (1-2 days)
 
 Fix the bugs and gaps identified during v1 testing. This is prerequisite to everything else.
 
@@ -44,7 +44,7 @@ Fix these 5 issues in glk-audit:
 
 1. Advisory mode CTA missing from PDF. In report.py around line 399, `cta = CTA.get("lead_magnet", {})` is hardcoded. Change it to use the `use_mode` parameter so advisory PDFs get their own CTA. Verify the CTA renders in both sample PDFs.
 
-2. Advisory mode should show written recommendations in the Streamlit results page AND the PDF. The rubric.py comments reference `recommendation` and `opportunity_copy` fields per question — check if they're populated. If not, add placeholder text for every question that has a risk_copy. In app.py, the `if MODE == "advisory"` branches at lines 212 and 221 should render these. In report.py, the advisory PDF path at line 512 should include a "Recommendations" section.
+2. Advisory mode should show written recommendations in the Streamlit results page AND the PDF. The rubric.py comments reference `recommendation` and `opportunity_copy` fields per question, check if they're populated. If not, add placeholder text for every question that has a risk_copy. In app.py, the `if MODE == "advisory"` branches at lines 212 and 221 should render these. In report.py, the advisory PDF path at line 512 should include a "Recommendations" section.
 
 3. Advisory mode should include a 30/60/90 day action plan section. Add a function in scoring.py that takes the top risks and generates a structured 30/60/90 block (30-day = quick wins from top 3 risks, 60-day = systemic fixes, 90-day = strategic initiatives). Render it in both the Streamlit results page and the PDF for advisory mode only.
 
@@ -57,7 +57,7 @@ After all changes, run `python3 test_scoring.py` and `python3 report.py` to veri
 
 ---
 
-## Phase 2 — Quantitative Inputs + Enriched Rubric (3-5 days)
+## Phase 2, Quantitative Inputs + Enriched Rubric (3-5 days)
 
 This is what separates a "quiz" from an "audit." Real numbers make the output credible.
 
@@ -85,7 +85,7 @@ Add a new section to the firmographics step AND weave quantitative questions int
 ### Claude Code Prompt
 
 ```
-Read ROADMAP.md for full context. We're on Phase 2 — adding quantitative inputs and industry benchmarks.
+Read ROADMAP.md for full context. We're on Phase 2, adding quantitative inputs and industry benchmarks.
 
 1. RESTRUCTURE: Move rubric.py, scoring.py, report.py into a new `core/` directory. Update all imports in app.py. Keep the flat files as symlinks or delete them and update .gitignore. Run tests to verify nothing broke.
 
@@ -104,7 +104,7 @@ Read ROADMAP.md for full context. We're on Phase 2 — adding quantitative input
    - Sales: customer_acquisition_cost, monthly_churn_rate_pct
    - Operations: on_time_delivery_pct, mean_time_to_resolve_hours
 
-4. ADD BENCHMARKS: Create a BENCHMARKS dict in rubric.py keyed by (industry, question_id). Each entry has {p25, p50, p75} values. For MVP, use reasonable estimates — we'll refine with real data later. Example:
+4. ADD BENCHMARKS: Create a BENCHMARKS dict in rubric.py keyed by (industry, question_id). Each entry has {p25, p50, p75} values. For MVP, use reasonable estimates, we'll refine with real data later. Example:
    ```python
    BENCHMARKS = {
        ("SaaS", "monthly_churn_rate_pct"): {"p25": 1.5, "p50": 3.0, "p75": 5.0},
@@ -112,7 +112,7 @@ Read ROADMAP.md for full context. We're on Phase 2 — adding quantitative input
    }
    ```
 
-5. UPDATE SCORING ENGINE: In core/scoring.py, handle the new "number" and "percent" question types. For quantitative questions with benchmarks, compute a percentile-based score (0-100) comparing the company's value to the industry benchmark. Blend quantitative scores with Likert scores for the dimension total using a 40/60 weight (40% quantitative, 60% qualitative) — but only if quantitative questions were answered.
+5. UPDATE SCORING ENGINE: In core/scoring.py, handle the new "number" and "percent" question types. For quantitative questions with benchmarks, compute a percentile-based score (0-100) comparing the company's value to the industry benchmark. Blend quantitative scores with Likert scores for the dimension total using a 40/60 weight (40% quantitative, 60% qualitative), but only if quantitative questions were answered.
 
 6. UPDATE UI: In app.py, render number inputs (st.number_input) for the new question types. Show the benchmark range as a caption below each quantitative input: "Industry median: 10 days | Top quartile: 5 days".
 
@@ -125,7 +125,7 @@ Run all tests and regenerate sample PDFs when done.
 
 ---
 
-## Phase 3 — AI-Generated Recommendations (3-5 days)
+## Phase 3, AI-Generated Recommendations (3-5 days)
 
 This is the killer feature. Instead of canned risk_copy strings, use Claude to write a 2-3 page consulting memo tailored to the company's specific answers.
 
@@ -140,20 +140,20 @@ This is the killer feature. Instead of canned risk_copy strings, use Claude to w
 ### Claude Code Prompt
 
 ```
-Read ROADMAP.md for full context. We're on Phase 3 — AI-generated recommendations using the Claude API (Anthropic SDK).
+Read ROADMAP.md for full context. We're on Phase 3, AI-generated recommendations using the Claude API (Anthropic SDK).
 
 1. ADD DEPENDENCY: Add `anthropic` to requirements.txt.
 
 2. CREATE core/recommendations.py with these functions:
 
-   a. `generate_recommendations(result, firmographics, answers)` — the main entry point.
+   a. `generate_recommendations(result, firmographics, answers)`, the main entry point.
       - Constructs a prompt with all audit data
       - Calls Claude API (claude-sonnet-4-20250514, temperature=0.3)
       - Returns a structured dict with: executive_summary, dimension_analyses (list), action_plan_30_60_90, top_3_roi_estimates
       - Uses structured output (JSON mode) so we can reliably parse the response
 
    b. The SYSTEM PROMPT should be approximately:
-      "You are a senior operating advisor at a private equity firm. You have just reviewed a comprehensive business audit for a {industry} company with {headcount} employees and {revenue} in annual revenue. Your job is to write a specific, actionable diagnostic memo — not generic advice. Reference the company's actual scores and answers. Be direct about what's broken and what the fix costs. Every recommendation should have a concrete next step, not a vague suggestion."
+      "You are a senior operating advisor at a private equity firm. You have just reviewed a comprehensive business audit for a {industry} company with {headcount} employees and {revenue} in annual revenue. Your job is to write a specific, actionable diagnostic memo, not generic advice. Reference the company's actual scores and answers. Be direct about what's broken and what the fix costs. Every recommendation should have a concrete next step, not a vague suggestion."
 
    c. The USER PROMPT should include:
       - Company profile (firmographics)
@@ -164,7 +164,7 @@ Read ROADMAP.md for full context. We're on Phase 3 — AI-generated recommendati
       - Quantitative inputs vs. benchmarks (where available)
       - Instruction to output JSON matching a specific schema
 
-   d. Handle API errors gracefully — if the call fails, fall back to the existing canned risk_copy/opportunity_copy strings. Never block the results page because of an API failure.
+   d. Handle API errors gracefully, if the call fails, fall back to the existing canned risk_copy/opportunity_copy strings. Never block the results page because of an API failure.
 
 3. CREATE .env.example with:
    ```
@@ -184,9 +184,9 @@ Read ROADMAP.md for full context. We're on Phase 3 — AI-generated recommendati
    - If present, replace the canned risk_copy sections with the AI-generated dimension analyses.
    - Add the 30/60/90 action plan as a new section.
    - Add ROI estimates table.
-   - The AI content should be clearly formatted — use the same visual language as the rest of the PDF (navy headers, serif body, proper spacing).
+   - The AI content should be clearly formatted, use the same visual language as the rest of the PDF (navy headers, serif body, proper spacing).
 
-6. For local testing, add ANTHROPIC_API_KEY to .env (I'll provide my key separately — do NOT commit it).
+6. For local testing, add ANTHROPIC_API_KEY to .env (I'll provide my key separately, do NOT commit it).
 
 7. Add basic tests: mock the API call, verify the prompt construction, verify graceful fallback on API failure.
 
@@ -195,28 +195,28 @@ Run tests and regenerate samples when done. For the sample PDFs, use canned copy
 
 ---
 
-## Phase 4 — Auth + Persistence with Supabase (3-5 days)
+## Phase 4, Auth + Persistence with Supabase (3-5 days)
 
 This turns the tool from stateless to stateful. Users can log in, save audits, and come back later.
 
 ### Claude Code Prompt
 
 ```
-Read ROADMAP.md for full context. We're on Phase 4 — adding authentication and data persistence with Supabase.
+Read ROADMAP.md for full context. We're on Phase 4, adding authentication and data persistence with Supabase.
 
 1. ADD DEPENDENCIES: Add `supabase` to requirements.txt.
 
 2. CREATE db/client.py:
    - Initialize the Supabase client from environment variables (SUPABASE_URL, SUPABASE_KEY).
    - Export a `get_client()` function that returns a singleton.
-   - If env vars are not set, return None (graceful degradation — app still works without a database, just no persistence).
+   - If env vars are not set, return None (graceful degradation, app still works without a database, just no persistence).
 
 3. CREATE db/models.py with these table schemas (we'll create them in Supabase dashboard):
 
-   - `users` — id (uuid, from Supabase auth), email, name, created_at
-   - `companies` — id (uuid), user_id (FK), name, industry, headcount, revenue_band, created_at
-   - `audits` — id (uuid), company_id (FK), user_id (FK), mode (lead_magnet/advisory), answers (jsonb), firmographics (jsonb), result (jsonb), ai_recommendations (jsonb), overall_score (float), overall_band (text), created_at
-   - `respondents` — id (uuid), audit_id (FK), email, name, role, answers (jsonb), completed_at (nullable)
+   - `users`, id (uuid, from Supabase auth), email, name, created_at
+   - `companies`, id (uuid), user_id (FK), name, industry, headcount, revenue_band, created_at
+   - `audits`, id (uuid), company_id (FK), user_id (FK), mode (lead_magnet/advisory), answers (jsonb), firmographics (jsonb), result (jsonb), ai_recommendations (jsonb), overall_score (float), overall_band (text), created_at
+   - `respondents`, id (uuid), audit_id (FK), email, name, role, answers (jsonb), completed_at (nullable)
 
 4. CREATE db/queries.py with CRUD functions:
    - save_audit(user_id, company_id, audit_data) → audit_id
@@ -228,7 +228,7 @@ Read ROADMAP.md for full context. We're on Phase 4 — adding authentication and
 5. UPDATE app.py:
    - Add a login/signup screen as Step 0 using Supabase Auth (st.session_state for auth token).
    - Use st_supabase_connector or manual OAuth flow with st.query_params.
-   - After auth, show a "company selector" — user can pick an existing company or create one.
+   - After auth, show a "company selector", user can pick an existing company or create one.
    - After completing an audit, auto-save to Supabase.
    - Add a "My Audits" sidebar section showing past audits with dates and scores.
 
@@ -236,17 +236,17 @@ Read ROADMAP.md for full context. We're on Phase 4 — adding authentication and
 
 7. Add .env.example entries for SUPABASE_URL and SUPABASE_KEY.
 
-8. Graceful degradation: if Supabase is not configured, the app should work exactly as it does today — no login, no persistence, just the quiz. This lets the free lead-magnet version keep running on the public URL.
+8. Graceful degradation: if Supabase is not configured, the app should work exactly as it does today, no login, no persistence, just the quiz. This lets the free lead-magnet version keep running on the public URL.
 ```
 
 ---
 
-## Phase 5 — Historical Tracking + Dashboard (2-3 days) ✅ SHIPPED
+## Phase 5, Historical Tracking + Dashboard (2-3 days) ✅ SHIPPED
 
 ### Claude Code Prompt
 
 ```
-Read ROADMAP.md for full context. We're on Phase 5 — historical tracking and trend dashboards.
+Read ROADMAP.md for full context. We're on Phase 5, historical tracking and trend dashboards.
 
 1. ADD a "Dashboard" view to app.py (new step after login, before starting a new audit):
    - Show a company health scorecard: latest overall score, per-dimension scores, band labels.
@@ -263,31 +263,31 @@ Read ROADMAP.md for full context. We're on Phase 5 — historical tracking and t
    - After each audit, the AI recommendations are saved.
    - On the dashboard, show a checklist of past recommendations with status: Not started / In progress / Done.
    - User can update status manually (simple checkbox + dropdown).
-   - Next audit, the AI prompt includes which recommendations were implemented — so it can comment on progress.
+   - Next audit, the AI prompt includes which recommendations were implemented, so it can comment on progress.
 
 4. Use Supabase queries from db/queries.py. Add any new query functions needed.
 ```
 
 ---
 
-## Phase 6 — Multi-Respondent Surveys (3-5 days)
+## Phase 6, Multi-Respondent Surveys (3-5 days)
 
 This is the PE-firm feature. CEO and CFO take the same audit independently; the platform shows where they agree and where they diverge.
 
 ### Claude Code Prompt
 
 ```
-Read ROADMAP.md for full context. We're on Phase 6 — multi-respondent team surveys.
+Read ROADMAP.md for full context. We're on Phase 6, multi-respondent team surveys.
 
 1. ADD an "Invite Team" flow:
    - After a company admin creates a new audit, they can invite team members by email.
    - Each invitee gets a unique link (audit_id + respondent token in URL params).
    - Invitees see the same quiz but their answers are stored separately in the `respondents` table.
-   - Invitees do NOT need to create an account — the link is their auth (read-only, scoped to this audit).
+   - Invitees do NOT need to create an account, the link is their auth (read-only, scoped to this audit).
 
 2. ADD a "Team Consensus" view (only visible to the admin who created the audit):
    - For each question, show the distribution of answers across respondents.
-   - Highlight "divergence" — questions where respondents disagree significantly (e.g., one person says Strongly Agree, another says Strongly Disagree). Flag these as blind spots.
+   - Highlight "divergence", questions where respondents disagree significantly (e.g., one person says Strongly Agree, another says Strongly Disagree). Flag these as blind spots.
    - Show per-respondent dimension scores side by side (table: rows = dimensions, columns = respondents).
    - Overall consensus score: % of questions where all respondents are within 1 point of each other.
 
@@ -304,12 +304,12 @@ Read ROADMAP.md for full context. We're on Phase 6 — multi-respondent team sur
 
 ---
 
-## Phase 7 — Stripe Paywall (2-3 days) ✅ SHIPPED
+## Phase 7, Stripe Paywall (2-3 days) ✅ SHIPPED
 
 ### Claude Code Prompt
 
 ```
-Read ROADMAP.md for full context. We're on Phase 7 — Stripe integration for paid tiers.
+Read ROADMAP.md for full context. We're on Phase 7, Stripe integration for paid tiers.
 
 1. ADD DEPENDENCY: `stripe` to requirements.txt.
 
@@ -382,8 +382,8 @@ Each subscriber is also a warm lead for $10K+ advisory engagements.
 
 ## What Makes This "Top Finance Tool" Grade
 
-1. **Quantitative rigor** — real numbers, not just vibes. Industry benchmarks give the scores external validity.
-2. **AI that sounds like a $500/hr consultant** — not generic advice, but specific recommendations that reference the company's actual data.
-3. **Longitudinal tracking** — run it quarterly, see the trendline, prove ROI on changes you made.
-4. **Multi-perspective** — team surveys expose blind spots that no single-respondent tool can find.
-5. **Actionable output** — 30/60/90 plans, ROI estimates, recommendation tracking. Not just a diagnosis but a treatment plan.
+1. **Quantitative rigor**, real numbers, not just vibes. Industry benchmarks give the scores external validity.
+2. **AI that sounds like a $500/hr consultant**, not generic advice, but specific recommendations that reference the company's actual data.
+3. **Longitudinal tracking**, run it quarterly, see the trendline, prove ROI on changes you made.
+4. **Multi-perspective**, team surveys expose blind spots that no single-respondent tool can find.
+5. **Actionable output**, 30/60/90 plans, ROI estimates, recommendation tracking. Not just a diagnosis but a treatment plan.

@@ -1,5 +1,5 @@
 -- ============================================================================
--- Structural Advantage Audit — Initial Schema
+-- Structural Advantage Audit, Initial Schema
 -- Run in Supabase SQL Editor: Dashboard → SQL Editor → New Query → paste → Run
 -- ============================================================================
 

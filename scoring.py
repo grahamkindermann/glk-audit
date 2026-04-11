@@ -1,5 +1,5 @@
 """
-scoring.py — Pure scoring logic for the Structural Advantage Business Audit.
+scoring.py: Pure scoring logic for the Structural Advantage Business Audit.
 
 No Streamlit imports. No I/O. No side effects. Every function is pure:
 same input -> same output. Safe to import from app.py, report.py, or tests.
@@ -154,7 +154,7 @@ def score_quantitative(answer, question, industry):
 
     benchmark = BENCHMARKS.get((industry, qid))
     if benchmark is None:
-        # No benchmark for this industry/question — use a neutral 50
+        # No benchmark for this industry/question, use a neutral 50
         return 50.0
 
     p25 = float(benchmark["p25"])

@@ -1,5 +1,5 @@
 """
-app.py — Streamlit UI for the Structural Advantage Business Audit.
+app.py: Streamlit UI for the Structural Advantage Business Audit.
 
 Multi-step flow:
     Step 0 (optional): Login / Sign-up (when Supabase is configured)
@@ -79,7 +79,7 @@ def _get_user_tier():
     """Return the current user's feature tier.
 
     - If Stripe is not configured: returns "report" (all paid features unlocked
-      for dev/demo — graceful degradation).
+      for dev/demo, a graceful degradation).
     - If user is not logged in: returns "free".
     - Otherwise: checks Supabase purchases table first, then subscriptions.
     """
@@ -107,7 +107,7 @@ def _user_has_feature(feature):
 def _render_upgrade_prompt(feature_label, target_tier="report"):
     """Show an upgrade prompt when a user hits a gated feature.
 
-    The default target tier is "report" — the one-time $149 Full Report
+    The default target tier is "report", the one-time $149 Full Report
     purchase. Callers can pass a different target_tier if needed, but all
     current paid features live on the "report" tier.
     """
@@ -475,7 +475,7 @@ def _render_overall(overall, previous_audit=None):
                 delta_color="off",
             )
         else:
-            st.metric(label="Overall Score", value="—", delta=overall["band_label"], delta_color="off")
+            st.metric(label="Overall Score", value="N/A", delta=overall["band_label"], delta_color="off")
     with col2:
         # Show vs. last audit delta
         if previous_audit and overall["score"] is not None:
@@ -502,7 +502,7 @@ def _render_dimension_table(dimensions, previous_audit=None):
 
     rows = []
     for dim_id, dim in dimensions.items():
-        score_str = f"{dim['score']:.0f}" if dim["score"] is not None else "—"
+        score_str = f"{dim['score']:.0f}" if dim["score"] is not None else "N/A"
         row = {
             "Dimension": dim["name"],
             "Score": score_str,
@@ -516,7 +516,7 @@ def _render_dimension_table(dimensions, previous_audit=None):
                 arrow = "+" if delta > 0 else ""
                 row["vs. Last"] = f"{arrow}{delta:.0f}"
             else:
-                row["vs. Last"] = "—"
+                row["vs. Last"] = "N/A"
         rows.append(row)
     st.table(rows)
 
@@ -622,9 +622,9 @@ def _render_recommendations(risks, opportunities):
 def _render_action_plan(action_plan):
     """Render the 30/60/90 day action plan for advisory mode."""
     st.subheader("30 / 60 / 90 Day Action Plan")
-    for phase, label in [("30_day", "30 Days — Quick Wins"),
-                          ("60_day", "60 Days — Systemic Fixes"),
-                          ("90_day", "90 Days — Strategic Initiatives")]:
+    for phase, label in [("30_day", "30 Days: Quick Wins"),
+                          ("60_day", "60 Days: Systemic Fixes"),
+                          ("90_day", "90 Days: Strategic Initiatives")]:
         items = action_plan.get(phase, [])
         st.markdown(f"**{label}**")
         if not items:
@@ -655,7 +655,7 @@ def _get_or_generate_ai_recs(result, firm, answers, rec_history=None):
 def _get_recommendation_history_for_prompt(firm):
     """Fetch past recommendation statuses for the AI prompt context.
 
-    Returns list of dicts with dimension, recommendation, status — or None.
+    Returns list of dicts with dimension, recommendation, status, or None.
     """
     if not st.session_state.get("auth_user_id"):
         return None
@@ -717,9 +717,9 @@ def _render_ai_action_plan(ai_recs):
     if not plan:
         return
     st.subheader("30 / 60 / 90 Day Action Plan")
-    for phase, label in [("30_day", "30 Days — Quick Wins"),
-                          ("60_day", "60 Days — Systemic Fixes"),
-                          ("90_day", "90 Days — Strategic Initiatives")]:
+    for phase, label in [("30_day", "30 Days: Quick Wins"),
+                          ("60_day", "60 Days: Systemic Fixes"),
+                          ("90_day", "90 Days: Strategic Initiatives")]:
         items = plan.get(phase, [])
         st.markdown(f"**{label}**")
         if not items:
@@ -740,7 +740,7 @@ def _render_ai_roi_estimates(ai_recs):
     estimates = ai_recs.get("roi_estimates", [])
     if not estimates:
         return
-    st.subheader("Estimated ROI — Top Recommendations")
+    st.subheader("Estimated ROI: Top Recommendations")
     rows = []
     for e in estimates:
         rows.append({
@@ -769,7 +769,7 @@ def _render_downloads(result, firm, answers, ai_recs=None, previous_audit=None):
     # advisory variant (opportunities, AI analyses, 30/60/90 action plan).
     # Free users get the lead_magnet variant (diagnosis + risks + benchmarks
     # + a CTA upsell to the Full Report). This is the per-user override of
-    # the global AUDIT_MODE env var — without it, tier has no effect on the
+    # the global AUDIT_MODE env var. Without it, tier has no effect on the
     # downloaded PDF.
     pdf_mode = "advisory" if _user_has_feature("pdf_full") else "lead_magnet"
     pdf_bytes = _build_pdf_bytes(result, firm, answers, ai_recs=ai_recs,
@@ -836,7 +836,7 @@ def _reset_state():
 
 
 # ---------------------------------------------------------------------------
-# Dashboard view (Phase 5 — logged-in users only)
+# Dashboard view (Phase 5, logged-in users only)
 # ---------------------------------------------------------------------------
 
 def _render_dashboard():
@@ -876,13 +876,13 @@ def _render_dashboard():
     latest = history[-1]  # most recent (history is oldest-first)
 
     # --- Health scorecard ---
-    st.subheader(f"{company['name']} — Health Scorecard")
+    st.subheader(f"{company['name']}: Health Scorecard")
 
     col1, col2 = st.columns([1, 2])
     with col1:
         score = latest.get("overall_score")
         band = latest.get("overall_band", "")
-        score_str = f"{score:.0f}" if score is not None else "—"
+        score_str = f"{score:.0f}" if score is not None else "N/A"
         st.metric(label="Overall Score", value=score_str, delta=band, delta_color="off")
 
         last_date = (latest.get("created_at") or "")[:10]
@@ -898,7 +898,7 @@ def _render_dashboard():
                 ds_score = ds.get("score")
                 rows.append({
                     "Dimension": ds.get("name", dim_id),
-                    "Score": f"{ds_score:.0f}" if ds_score is not None else "—",
+                    "Score": f"{ds_score:.0f}" if ds_score is not None else "N/A",
                     "Band": ds.get("band_label", ""),
                 })
             st.table(rows)
@@ -1139,7 +1139,7 @@ def _render_past_audits_sidebar(client):
         score = a.get("overall_score")
         band = a.get("overall_band", "")
         date_str = (a.get("created_at") or "")[:10]
-        score_str = f"{score:.0f}" if score is not None else "—"
+        score_str = f"{score:.0f}" if score is not None else "N/A"
         st.caption(f"{name} · {score_str} ({band}) · {date_str}")
 
 
@@ -1275,7 +1275,7 @@ def render_nav():
 
 def main():
     st.set_page_config(
-        page_title=f"{BRAND['wordmark']} — Audit",
+        page_title=f"{BRAND['wordmark']} Audit",
         layout="centered",
     )
     init_state()
@@ -1306,18 +1306,54 @@ def main():
 
     render_nav()
 
-    # Scroll to top on every page render (fixes "stuck at bottom" after Next).
-    # The Streamlit app lives inside a nested iframe on Cloud; the actual
-    # scrollable container is <section data-testid="stMain"> in the parent doc.
+    # Scroll to top on every page render. Fires on every rerun, including
+    # after Next is clicked. The nonce (current_step) forces Streamlit to
+    # treat the HTML block as new content on every navigation so the script
+    # is re-injected and executed.
+    _scroll_nonce = st.session_state.get("current_step", 0)
     st.html(
-        """
+        f"""
+        <div id="scroll-anchor-{_scroll_nonce}" style="display:none;"></div>
         <script>
-        setTimeout(function() {
-            try {
-                var main = window.parent.document.querySelector('[data-testid="stMain"]');
-                if (main) { main.scrollTop = 0; }
-            } catch(e) {}
-        }, 100);
+        (function() {{
+            function scrollAll() {{
+                try {{ window.scrollTo(0, 0); }} catch(e) {{}}
+                try {{ document.documentElement.scrollTop = 0; }} catch(e) {{}}
+                try {{ document.body.scrollTop = 0; }} catch(e) {{}}
+                try {{
+                    var p = window.parent;
+                    if (p && p !== window) {{
+                        p.scrollTo(0, 0);
+                        var pdoc = p.document;
+                        if (pdoc) {{
+                            pdoc.documentElement.scrollTop = 0;
+                            pdoc.body.scrollTop = 0;
+                            var sels = [
+                                '[data-testid="stMain"]',
+                                '[data-testid="stAppViewContainer"]',
+                                '[data-testid="ScrollToBottomContainer"]',
+                                'section.main',
+                                'main',
+                                '.main'
+                            ];
+                            for (var i = 0; i < sels.length; i++) {{
+                                var el = pdoc.querySelector(sels[i]);
+                                if (el) {{ el.scrollTop = 0; }}
+                            }}
+                        }}
+                    }}
+                }} catch(e) {{}}
+            }}
+            scrollAll();
+            if (window.requestAnimationFrame) {{
+                window.requestAnimationFrame(scrollAll);
+            }}
+            setTimeout(scrollAll, 0);
+            setTimeout(scrollAll, 50);
+            setTimeout(scrollAll, 150);
+            setTimeout(scrollAll, 350);
+            setTimeout(scrollAll, 700);
+        }})();
         </script>
         """
     )

@@ -1,5 +1,5 @@
 """
-db_queries.py — CRUD operations for the Structural Advantage audit platform.
+db_queries.py: CRUD operations for the Structural Advantage audit platform.
 
 All functions take a Supabase client as the first argument. If the client
 is None, they return sensible defaults (empty lists, None) so the app
@@ -255,7 +255,7 @@ def get_audit_history(client, company_id, limit=20):
     """Return audit history for a company (for trend charts).
 
     Returns list of dicts with: id, overall_score, overall_band,
-    dimension_scores, created_at — ordered oldest first for charting.
+    dimension_scores, created_at, ordered oldest first for charting.
     """
     if client is None:
         return []

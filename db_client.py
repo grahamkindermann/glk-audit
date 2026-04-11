@@ -1,5 +1,5 @@
 """
-db_client.py — Supabase client initialization.
+db_client.py, Supabase client initialization.
 
 Graceful degradation: if SUPABASE_URL or SUPABASE_KEY are not set,
 get_client() returns None. All downstream code must check for None
@@ -29,7 +29,7 @@ def get_client():
     _initialized = True
 
     if not SUPABASE_URL or not SUPABASE_KEY:
-        logger.info("SUPABASE_URL or SUPABASE_KEY not set — database disabled.")
+        logger.info("SUPABASE_URL or SUPABASE_KEY not set, database disabled.")
         return None
 
     try:
@@ -38,7 +38,7 @@ def get_client():
         logger.info("Supabase client initialized.")
         return _client
     except ImportError:
-        logger.warning("supabase package not installed — database disabled.")
+        logger.warning("supabase package not installed, database disabled.")
         return None
     except Exception as e:
         logger.error(f"Failed to initialize Supabase client: {e}")

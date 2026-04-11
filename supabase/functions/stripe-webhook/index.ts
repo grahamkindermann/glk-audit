@@ -2,8 +2,8 @@
 // Handles Stripe subscription lifecycle events and updates the subscriptions table.
 //
 // Required env vars (set in Supabase Dashboard → Edge Functions → Secrets):
-//   STRIPE_SECRET_KEY    — sk_live_...
-//   STRIPE_WEBHOOK_SECRET — whsec_...
+//   STRIPE_SECRET_KEY   , sk_live_...
+//   STRIPE_WEBHOOK_SECRET, whsec_...
 //
 // Deploy with:
 //   supabase functions deploy stripe-webhook --project-ref fucitxhzxtvrpfxlkhox
@@ -61,7 +61,7 @@ serve(async (req) => {
   console.log(`Received event: ${event.type}`);
 
   // -----------------------------------------------------------------------
-  // checkout.session.completed — branch on session mode
+  // checkout.session.completed, branch on session mode
   //   "payment"      -> one-time purchase, insert into `purchases`
   //   "subscription" -> recurring subscription, upsert into `subscriptions`
   // -----------------------------------------------------------------------
@@ -139,7 +139,7 @@ serve(async (req) => {
   }
 
   // -----------------------------------------------------------------------
-  // customer.subscription.updated — plan change, renewal, payment issue
+  // customer.subscription.updated, plan change, renewal, payment issue
   // -----------------------------------------------------------------------
   if (event.type === "customer.subscription.updated") {
     const subscription = event.data.object as Stripe.Subscription;
@@ -172,7 +172,7 @@ serve(async (req) => {
   }
 
   // -----------------------------------------------------------------------
-  // customer.subscription.deleted — cancellation
+  // customer.subscription.deleted, cancellation
   // -----------------------------------------------------------------------
   if (event.type === "customer.subscription.deleted") {
     const subscription = event.data.object as Stripe.Subscription;

@@ -1,5 +1,5 @@
 """
-stripe_gate.py — Stripe integration for paid tiers.
+stripe_gate.py: Stripe integration for paid tiers.
 
 Pure function interface:
     is_configured() -> bool
@@ -41,7 +41,7 @@ def _get_stripe():
         _stripe = stripe
         return stripe
     except ImportError:
-        logger.warning("stripe package not installed — payment features disabled.")
+        logger.warning("stripe package not installed, payment features disabled.")
         return None
 
 
@@ -58,8 +58,8 @@ def create_checkout_session(user_id, user_email, price_id, success_url, cancel_u
     """Create a Stripe Checkout session. Returns the checkout URL or None.
 
     `mode` can be:
-        "payment"       — one-time purchase (default, used by the $149 Full Report)
-        "subscription"  — recurring subscription (legacy Pro / Team tiers)
+        "payment"      , one-time purchase (default, used by the $149 Full Report)
+        "subscription" , recurring subscription (legacy Pro / Team tiers)
     """
     stripe = _get_stripe()
     if stripe is None:
@@ -114,7 +114,7 @@ def handle_webhook_event(payload, sig_header):
     """Verify and parse a Stripe webhook event.
 
     Returns a dict with: event_type, user_id, stripe_customer_id,
-    stripe_subscription_id, price_id, status — or None on failure.
+    stripe_subscription_id, price_id, status, or None on failure.
     """
     stripe = _get_stripe()
     if stripe is None:
@@ -173,7 +173,7 @@ def get_subscription_tier(client, user_id):
     """Return the user's current feature tier from Supabase.
 
     Resolution order:
-      1. If Stripe is not configured, return "report" (graceful degradation —
+      1. If Stripe is not configured, return "report" (graceful degradation -
          all paid features unlocked for dev/demo instances).
       2. If the user has any completed row in the `purchases` table
          (full_report or equivalent), return "report". Lifetime unlock.
@@ -203,7 +203,7 @@ def get_subscription_tier(client, user_id):
             if product_type == "full_report":
                 return "report"
     except Exception as e:
-        # Table may not exist yet if migration hasn't run — fall through to subscriptions
+        # Table may not exist yet if migration hasn't run, fall through to subscriptions
         logger.debug(f"Purchases lookup skipped: {e}")
 
     # 2. Fall back to legacy subscription tier

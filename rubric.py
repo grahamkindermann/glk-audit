@@ -1,16 +1,16 @@
 """
-Structural Advantage — Business Audit Rubric
+Structural Advantage: Business Audit Rubric
 =============================================
 
 All scoring content lives here. Edit freely; do not edit app.py to change
 content. scoring.py consumes this file as plain data.
 
 To change the product's behavior, edit (in order of how often you'll touch it):
-    1. MODE                     — switch lead-magnet vs. advisory build
-    2. Question text / weights  — inside DIMENSIONS
-    3. Copy (risk / opp / rec)  — inside each question
-    4. BANDS / thresholds       — scoring tier boundaries
-    5. CTA / BRAND              — report framing
+    1. MODE                     : switch lead-magnet vs. advisory build
+    2. Question text / weights  : inside DIMENSIONS
+    3. Copy (risk / opp / rec)  : inside each question
+    4. BANDS / thresholds       : scoring tier boundaries
+    5. CTA / BRAND              : report framing
 """
 
 # ---------------------------------------------------------------------------
@@ -32,11 +32,11 @@ import os
 MODE = os.environ.get("AUDIT_MODE", "lead_magnet")
 
 # ---------------------------------------------------------------------------
-# TIERS — feature-gate definitions for paid plans
+# TIERS: feature-gate definitions for paid plans
 # "free" features are always available. Each higher tier inherits all
 # features from the tier below.
 #
-# stripe_price_id values are placeholders — replace with real Stripe price
+# stripe_price_id values are placeholders. Replace with real Stripe price
 # IDs once you create products in the Stripe Dashboard.
 # ---------------------------------------------------------------------------
 _FULL_REPORT_FEATURES = {
@@ -132,15 +132,15 @@ CTA = {
     "lead_magnet": {
         # Upsell block (rendered first in the PDF CTA section). The free
         # diagnostic exists to earn trust; the Full Report is where the
-        # depth lives. Lead with it — don't route 100% of free readers to
+        # depth lives. Lead with it. Don't route 100% of free readers to
         # a 30-minute solo call.
         "upsell_headline": "See what's actually load-bearing.",
         "upsell_body": (
             "The Full Report adds an AI-written executive summary specific to "
             "your answers, dimension-level analysis, an ROI-ranked action plan, "
-            "and industry benchmarks \u2014 everything this free diagnosis gestures at."
+            "and industry benchmarks. Everything this free diagnosis gestures at."
         ),
-        "upsell_label": "Get the Full Report \u2014 $149",
+        "upsell_label": "Get the Full Report: $149",
         "upsell_url":   "https://structural-audit.streamlit.app/?utm=pdf_cta",
         # Secondary path: a human conversation with Graham. Kept for readers
         # who want advisory depth instead of the productized report.
@@ -271,13 +271,13 @@ DIMENSIONS = [
             },
             {
                 "id": "per_04",
-                "text": "When someone on the team makes a commitment with a date, it is met or renegotiated before the date — not missed silently.",
+                "text": "When someone on the team makes a commitment with a date, it is met or renegotiated before the date, not missed silently.",
                 "type": "likert",
                 "weight": 1.5,
                 "reverse": False,
                 "allow_na": True,
                 "risk_copy": "When deadlines slip silently, the owner becomes the only quality-control mechanism in the business.",
-                "opportunity_copy": "This is the single cheapest accountability upgrade available — it costs nothing but attention.",
+                "opportunity_copy": "This is the single cheapest accountability upgrade available. It costs nothing but attention.",
                 "recommendation": "Model it yourself for 30 days by renegotiating, out loud, every date you're about to miss.",
             },
             {
@@ -389,7 +389,7 @@ DIMENSIONS = [
             },
             {
                 "id": "fin_05",
-                "text": "A budget vs. actuals review happens on a fixed cadence with a named owner — not just when something looks off.",
+                "text": "A budget vs. actuals review happens on a fixed cadence with a named owner, not just when something looks off.",
                 "type": "likert",
                 "weight": 1.2,
                 "reverse": False,
@@ -422,7 +422,7 @@ DIMENSIONS = [
             },
             {
                 "id": "fin_08",
-                "text": "My own compensation is set at market replacement cost for my role — not whatever is left over at the end of the month.",
+                "text": "My own compensation is set at market replacement cost for my role, not whatever is left over at the end of the month.",
                 "type": "yesno",
                 "weight": 0.8,
                 "reverse": False,
@@ -463,7 +463,7 @@ DIMENSIONS = [
         "questions": [
             {
                 "id": "sw_01",
-                "text": "For every critical domain — customers, finances, employees, operations — there is one system of record, and everyone on the team knows which one.",
+                "text": "For every critical domain (customers, finances, employees, operations) there is one system of record, and everyone on the team knows which one.",
                 "type": "likert",
                 "weight": 1.8,
                 "reverse": False,
@@ -545,7 +545,7 @@ DIMENSIONS = [
                 "weight": 0.8,
                 "lower_is_better": False,
                 "allow_na": True,
-                "risk_copy": "Software spend outside the industry norm — too high or too low — signals either waste or underinvestment.",
+                "risk_copy": "Software spend outside the industry norm (too high or too low) signals either waste or underinvestment.",
                 "opportunity_copy": "Benchmarking spend against your vertical reveals where you are over- or under-tooled.",
                 "recommendation": "Pull total SaaS spend from AP, divide by revenue, and compare to industry median.",
             },
@@ -559,7 +559,7 @@ DIMENSIONS = [
         "questions": [
             {
                 "id": "ai_01",
-                "text": "The business has at least one AI-enabled workflow in production today that is saving time or money. Not a pilot — in production.",
+                "text": "The business has at least one AI-enabled workflow in production today that is saving time or money. Not a pilot, in production.",
                 "type": "yesno",
                 "weight": 1.8,
                 "reverse": False,
@@ -576,7 +576,7 @@ DIMENSIONS = [
                 "reverse": False,
                 "allow_na": True,
                 "risk_copy": "An owner who doesn't use AI personally cannot credibly lead an AI-enabled team.",
-                "opportunity_copy": "Personal AI fluency changes how you evaluate every other decision — hiring, pricing, speed.",
+                "opportunity_copy": "Personal AI fluency changes how you evaluate every other decision, hiring, pricing, speed.",
                 "recommendation": "Pick one task you do weekly and move it to an AI-assisted workflow this month.",
             },
             {
@@ -597,7 +597,7 @@ DIMENSIONS = [
                 "weight": 1.0,
                 "reverse": False,
                 "allow_na": True,
-                "risk_copy": "The absence of a policy is itself the policy — and it is the wrong one.",
+                "risk_copy": "The absence of a policy is itself the policy, and it is the wrong one.",
                 "opportunity_copy": "Clear rules let the team use AI faster, not slower.",
                 "recommendation": "Draft a one-page AI policy this week covering customer data, confidentiality, and approved tools; share it with the team.",
             },
@@ -609,7 +609,7 @@ DIMENSIONS = [
                 "lower_is_better": False,
                 "allow_na": True,
                 "risk_copy": "Zero production AI workflows means you are falling behind competitors who have them.",
-                "opportunity_copy": "Each production AI workflow compounds — it trains the team, generates data, and unlocks the next one.",
+                "opportunity_copy": "Each production AI workflow compounds, it trains the team, generates data, and unlocks the next one.",
                 "recommendation": "Pick one high-volume, text-heavy process and deploy an AI tool on it within 30 days.",
             },
         ],
@@ -666,7 +666,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sal_05",
-                "text": "I know which marketing channels produce our best customers — not just our cheapest leads.",
+                "text": "I know which marketing channels produce our best customers, not just our cheapest leads.",
                 "type": "likert",
                 "weight": 1.2,
                 "reverse": False,
@@ -715,7 +715,7 @@ DIMENSIONS = [
                 "weight": 1.2,
                 "lower_is_better": True,
                 "allow_na": True,
-                "risk_copy": "High churn means you are filling a leaking bucket — growth masks the real problem.",
+                "risk_copy": "High churn means you are filling a leaking bucket, growth masks the real problem.",
                 "opportunity_copy": "Cutting churn by even half a point compounds into massive LTV improvement.",
                 "recommendation": "Interview your last five churned customers and fix the top pattern.",
             },
@@ -740,14 +740,14 @@ DIMENSIONS = [
             },
             {
                 "id": "ops_02",
-                "text": "We meet our commitments to customers — on time and in full — more than 95% of the time.",
+                "text": "We meet our commitments to customers (on time and in full) more than 95% of the time.",
                 "type": "likert",
                 "weight": 1.5,
                 "reverse": False,
                 "allow_na": True,
                 "risk_copy": "Unreliable delivery erodes customer trust faster than any marketing campaign can rebuild it.",
                 "opportunity_copy": "Fixing delivery reliability compounds: the same customers buy more, churn less, and refer more.",
-                "recommendation": "Instrument OTIF measurement for the next 60 days, even roughly — you cannot fix what you don't measure.",
+                "recommendation": "Instrument OTIF measurement for the next 60 days, even roughly, you cannot fix what you don't measure.",
             },
             {
                 "id": "ops_03",
@@ -758,11 +758,11 @@ DIMENSIONS = [
                 "allow_na": True,
                 "risk_copy": "Operating without a bottleneck hypothesis means every improvement is a guess.",
                 "opportunity_copy": "Correctly identifying and fixing the bottleneck is the single highest-ROI operations move available.",
-                "recommendation": "Walk your core process end to end and identify where work waits — that's the bottleneck.",
+                "recommendation": "Walk your core process end to end and identify where work waits, that's the bottleneck.",
             },
             {
                 "id": "ops_04",
-                "text": "Rework — redoing work that was delivered incorrectly the first time — is rare and tracked when it happens.",
+                "text": "Rework (redoing work that was delivered incorrectly the first time) is rare and tracked when it happens.",
                 "type": "likert",
                 "weight": 1.2,
                 "reverse": False,
@@ -778,7 +778,7 @@ DIMENSIONS = [
                 "weight": 1.2,
                 "reverse": False,
                 "allow_na": True,
-                "risk_copy": "KPIs that aren't reviewed aren't KPIs — they're wallpaper.",
+                "risk_copy": "KPIs that aren't reviewed aren't KPIs, they're wallpaper.",
                 "opportunity_copy": "A 30-minute weekly KPI review is the cheapest management upgrade available in operations.",
                 "recommendation": "Schedule a standing weekly KPI review, 30 minutes, same day and time; start next week.",
             },
@@ -789,7 +789,7 @@ DIMENSIONS = [
                 "weight": 1.0,
                 "reverse": False,
                 "allow_na": True,
-                "risk_copy": "Concentration risk is cheap until it isn't — and then it's the whole business.",
+                "risk_copy": "Concentration risk is cheap until it isn't, and then it's the whole business.",
                 "opportunity_copy": "Even a partial second source gives you pricing leverage on the primary.",
                 "recommendation": "List your top five vendors; for any that would cripple the business if they disappeared, qualify a backup this quarter.",
             },
@@ -813,7 +813,7 @@ DIMENSIONS = [
                 "allow_na": True,
                 "risk_copy": "Every missed delivery erodes the trust that keeps customers renewing.",
                 "opportunity_copy": "Tracking OTIF for 60 days reveals the root causes you can actually fix.",
-                "recommendation": "Instrument OTIF measurement this month, even roughly — you cannot fix what you don't measure.",
+                "recommendation": "Instrument OTIF measurement this month, even roughly, you cannot fix what you don't measure.",
             },
             {
                 "id": "ops_q_mttr_hours",
@@ -823,7 +823,7 @@ DIMENSIONS = [
                 "lower_is_better": True,
                 "allow_na": True,
                 "risk_copy": "Long resolution times compound: one slow fix creates three follow-up tickets.",
-                "opportunity_copy": "Cutting MTTR often costs nothing — the fix is usually a process bottleneck, not a resource gap.",
+                "opportunity_copy": "Cutting MTTR often costs nothing, the fix is usually a process bottleneck, not a resource gap.",
                 "recommendation": "Pull your last 20 resolved tickets, find the step where they sat longest, and fix that step.",
             },
         ],
