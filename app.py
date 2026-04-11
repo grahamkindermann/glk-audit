@@ -757,11 +757,81 @@ def _render_cta():
     cta = CTA.get(MODE)
     if cta is None:
         return
-    st.subheader(cta["headline"])
+
+    # Full Report purchase block: shown to any user who does NOT already
+    # have the pdf_full feature (i.e., anyone who hasn't bought it). Paid
+    # users skip this entirely.
+    if not _user_has_feature("pdf_full"):
+        _render_full_report_purchase(cta)
+        st.write("")
+
+    # Secondary CTAs: book a call, subscribe, etc. Still shown to paid
+    # users so they can still book advisory time.
+    if cta.get("headline"):
+        st.subheader(cta["headline"])
     if cta.get("primary_url"):
         st.markdown(f"[{cta['primary_label']}]({cta['primary_url']})")
     if cta.get("secondary_url"):
         st.markdown(f"[{cta['secondary_label']}]({cta['secondary_url']})")
+
+
+def _render_full_report_purchase(cta):
+    """Prominent Full Report purchase CTA rendered on the results page.
+
+    Uses the upsell_* keys from the CTA config for copy. If the user is
+    logged in and Stripe is configured, renders a direct checkout button.
+    Otherwise falls back to the upsell_url link (so anonymous users still
+    see the offer and can click through).
+    """
+    headline = cta.get("upsell_headline") or "Unlock the Full Report"
+    body = cta.get("upsell_body") or (
+        "The Full Report includes an AI-written executive summary, "
+        "dimension-level analysis, an ROI-ranked action plan, and "
+        "industry benchmarks."
+    )
+    label = cta.get("upsell_label") or "Get the Full Report: $149"
+    fallback_url = cta.get("upsell_url")
+
+    tier_def = TIERS.get("report", {})
+    price_id = tier_def.get("stripe_price_id", "")
+    billing_mode = tier_def.get("billing_mode", "payment")
+
+    st.subheader(headline)
+    st.write(body)
+
+    user_id = st.session_state.get("auth_user_id")
+
+    if stripe_is_configured() and user_id and price_id:
+        # Logged-in path: direct Stripe checkout button.
+        if st.button(label, key="purchase_full_report",
+                     type="primary", use_container_width=True):
+            user_email = st.session_state.get("auth_email", "")
+            base_url = os.environ.get("APP_URL",
+                                      "https://structural-audit.streamlit.app")
+            checkout_url = create_checkout_session(
+                user_id=user_id,
+                user_email=user_email,
+                price_id=price_id,
+                success_url=f"{base_url}/?checkout=success",
+                cancel_url=f"{base_url}/?checkout=cancel",
+                mode=billing_mode,
+            )
+            if checkout_url:
+                st.markdown(f"[Complete checkout →]({checkout_url})")
+            else:
+                st.error("Unable to create checkout session. Please try again.")
+    elif not user_id:
+        # Anonymous path: prompt to sign in, plus a fallback link.
+        st.info(
+            "Sign in (sidebar) to purchase the Full Report, or click below "
+            "to see what's included."
+        )
+        if fallback_url:
+            st.markdown(f"[{label}]({fallback_url})")
+    else:
+        # Logged in but Stripe not configured: fallback link.
+        if fallback_url:
+            st.markdown(f"[{label}]({fallback_url})")
 
 
 def _render_downloads(result, firm, answers, ai_recs=None, previous_audit=None):
