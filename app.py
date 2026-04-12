@@ -1708,11 +1708,13 @@ def _auto_save_audit(result, firm, answers, ai_recs=None):
 
 def render_progress():
     step_num = st.session_state.current_step + 1
-    # On step 0, the hero section already provides context — skip the
-    # progress bar entirely so it doesn't create an ugly band below the hero.
+    # Step 1: hero section provides context, skip bar entirely.
     if step_num == 1:
         return
-    st.progress(step_num / TOTAL_STEPS, text=f"Step {step_num} of {TOTAL_STEPS}")
+    # Show step count as a caption above a clean progress bar (no text
+    # overlay — the dark label bar Streamlit renders is ugly).
+    st.caption(f"Step {step_num} of {TOTAL_STEPS}")
+    st.progress(step_num / TOTAL_STEPS)
 
 
 def render_wordmark():
