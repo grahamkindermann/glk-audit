@@ -1708,6 +1708,10 @@ def _auto_save_audit(result, firm, answers, ai_recs=None):
 
 def render_progress():
     step_num = st.session_state.current_step + 1
+    # On step 0, the hero section already provides context — skip the
+    # progress bar entirely so it doesn't create an ugly band below the hero.
+    if step_num == 1:
+        return
     st.progress(step_num / TOTAL_STEPS, text=f"Step {step_num} of {TOTAL_STEPS}")
 
 
@@ -1718,7 +1722,13 @@ def render_wordmark():
         f"font-size:1.1rem;color:#0B1F3A;font-weight:600;'>{BRAND['wordmark']}</div>",
         unsafe_allow_html=True,
     )
-    subtitle = BRAND["cover_subtitle"].get(MODE, "")
+    # Show "Business Structural Audit" for anonymous visitors regardless of
+    # AUDIT_MODE. "Confidential Advisory Audit" is only appropriate for
+    # logged-in users who are paying for advisory depth.
+    if st.session_state.get("auth_user_id") and MODE == "advisory":
+        subtitle = BRAND["cover_subtitle"].get("advisory", "")
+    else:
+        subtitle = BRAND["cover_subtitle"].get("lead_magnet", "")
     if subtitle:
         st.caption(subtitle)
 
@@ -1759,6 +1769,7 @@ def render_wordmark():
                 letter-spacing: 0.02em;
             ">No sign-up required · Free instant results · Takes ~10 min</div>
         </div>
+        <div style="height: 1rem;"></div>
         """, unsafe_allow_html=True)
 
 
