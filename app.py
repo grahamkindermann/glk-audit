@@ -447,6 +447,29 @@ def render_firmographics():
 
     st.header("Business Context")
     st.caption("A minute of context, then the audit. Nothing on this screen is scored.")
+
+    # Social proof / credibility strip
+    st.markdown("""
+    <div style="
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+        flex-wrap: wrap;
+        padding: 0.75rem 0;
+        margin: 0.5rem 0 1rem 0;
+        border-top: 1px solid #E8E4DC;
+        border-bottom: 1px solid #E8E4DC;
+    ">
+        <span style="font-family:'Inter',sans-serif;font-size:0.8rem;color:#666;">
+            6 structural dimensions</span>
+        <span style="font-family:'Inter',sans-serif;font-size:0.8rem;color:#666;">
+            39 diagnostic questions</span>
+        <span style="font-family:'Inter',sans-serif;font-size:0.8rem;color:#666;">
+            AI-powered analysis</span>
+        <span style="font-family:'Inter',sans-serif;font-size:0.8rem;color:#666;">
+            Instant PDF report</span>
+    </div>
+    """, unsafe_allow_html=True)
     st.write("")
 
     for f in FIRMOGRAPHICS:
@@ -658,6 +681,10 @@ def render_results():
     # Auto-save to Supabase if logged in
     _auto_save_audit(result, firm, answers, ai_recs=ai_recs)
 
+    # Email capture for anonymous users (post-completion, pre-download)
+    if not st.session_state.get("auth_user_id"):
+        _render_email_capture(result, firm)
+
     _render_cta()
     _render_downloads(result, firm, answers, ai_recs=ai_recs, previous_audit=previous_audit)
 
@@ -683,30 +710,70 @@ def _render_incomplete_warning(insufficient_dims):
 
 
 def _render_overall(overall, previous_audit=None):
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        if overall["score"] is not None:
+    # Band color mapping for visual emphasis
+    band_colors = {
+        "critical": "#8B2E2E",
+        "fragile": "#B8860B",
+        "functional": "#2B6CB0",
+        "strong": "#2E5D3A",
+        "durable": "#1A5D1A",
+    }
+    band_id = overall.get("band_id", "")
+    band_color = band_colors.get(band_id, "#0B1F3A")
+    score_str = f"{overall['score']:.0f}" if overall["score"] is not None else "—"
+    band_label = overall.get("band_label", "")
+
+    # Hero score display
+    st.markdown(f"""
+    <div style="
+        text-align: center;
+        padding: 1.5rem 1rem;
+        margin: 0.5rem 0 1rem 0;
+        background: #FFFFFF;
+        border: 1px solid #E8E4DC;
+        border-radius: 10px;
+    ">
+        <div style="
+            font-family: 'Playfair Display', serif;
+            font-size: 3.5rem;
+            color: {band_color};
+            line-height: 1;
+            margin-bottom: 0.25rem;
+        ">{score_str}</div>
+        <div style="
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            margin-bottom: 0.25rem;
+        ">out of 100</div>
+        <div style="
+            display: inline-block;
+            background: {band_color};
+            color: #F5F1E8;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 0.25rem 1rem;
+            border-radius: 20px;
+            letter-spacing: 0.05em;
+        ">{band_label}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Show vs. last audit delta
+    if previous_audit and overall["score"] is not None:
+        prev_score = previous_audit.get("overall_score")
+        if prev_score is not None:
+            delta = overall["score"] - prev_score
+            prev_date = (previous_audit.get("created_at") or "")[:10]
             st.metric(
-                label="Overall Score",
-                value=f"{overall['score']:.0f}",
-                delta=overall["band_label"],
+                label="vs. Last Audit",
+                value=f"{delta:+.0f} pts",
+                delta=f"from {prev_score:.0f} on {prev_date}" if prev_date else None,
                 delta_color="off",
             )
-        else:
-            st.metric(label="Overall Score", value="N/A", delta=overall["band_label"], delta_color="off")
-    with col2:
-        # Show vs. last audit delta
-        if previous_audit and overall["score"] is not None:
-            prev_score = previous_audit.get("overall_score")
-            if prev_score is not None:
-                delta = overall["score"] - prev_score
-                prev_date = (previous_audit.get("created_at") or "")[:10]
-                st.metric(
-                    label="vs. Last Audit",
-                    value=f"{delta:+.0f} pts",
-                    delta=f"from {prev_score:.0f} on {prev_date}" if prev_date else None,
-                    delta_color="off",
-                )
     st.write("")
 
 
@@ -969,6 +1036,74 @@ def _render_ai_roi_estimates(ai_recs):
     st.table(rows)
 
 
+def _render_email_capture(result, firm):
+    """Post-completion email capture for anonymous users.
+
+    Positioned after results, before CTA/downloads. This is the primary
+    lead-gen mechanism: visitors see value first, then we ask for email
+    to deliver the PDF report. No password, no account — just an email.
+    """
+    if st.session_state.get("email_captured"):
+        st.success("Report will be sent to your inbox. You can also download it below.")
+        return
+
+    st.markdown("---")
+    st.markdown("""
+    <div style="
+        text-align: center;
+        padding: 0.5rem 0 0.25rem 0;
+    ">
+        <div style="
+            font-family: 'Playfair Display', serif;
+            font-size: 1.3rem;
+            color: #0B1F3A;
+            margin-bottom: 0.25rem;
+        ">Get your report delivered</div>
+        <div style="
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            color: #666;
+        ">Enter your email to receive a copy of your diagnostic report.</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        email = st.text_input(
+            "Email address",
+            key="capture_email",
+            placeholder="you@company.com",
+            label_visibility="collapsed",
+        )
+    with col2:
+        send_clicked = st.button("Send report", key="send_report_btn",
+                                  type="primary", use_container_width=True)
+
+    if send_clicked and email:
+        # Validate email format
+        if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            # Save to Supabase if configured
+            client = get_client()
+            if client:
+                try:
+                    client.table("email_captures").insert({
+                        "email": email,
+                        "overall_score": result["overall"].get("score"),
+                        "overall_band": result["overall"].get("band_label"),
+                        "company_name": firm.get("company_name", ""),
+                        "industry": firm.get("industry", ""),
+                        "source": "results_page",
+                    }).execute()
+                except Exception:
+                    pass  # Table may not exist yet; fail silently
+            st.session_state.email_captured = True
+            st.rerun()
+        else:
+            st.warning("Please enter a valid email address.")
+    elif send_clicked:
+        st.warning("Please enter your email address.")
+
+
 def _render_cta():
     st.markdown("---")
     cta = CTA.get(MODE)
@@ -995,18 +1130,13 @@ def _render_cta():
 def _render_full_report_purchase(cta):
     """Prominent Full Report purchase CTA rendered on the results page.
 
-    Uses the upsell_* keys from the CTA config for copy. If the user is
+    Uses a branded card layout with clear value proposition. If the user is
     logged in and Stripe is configured, renders a one-click link_button
     that takes them straight to Stripe Checkout. Otherwise falls back to
     upsell_url (so anonymous users still see the offer and can click
     through).
     """
     headline = cta.get("upsell_headline") or "Unlock the Full Report"
-    body = cta.get("upsell_body") or (
-        "The Full Report includes an AI-written executive summary, "
-        "dimension-level analysis, an ROI-ranked action plan, and "
-        "industry benchmarks."
-    )
     label = cta.get("upsell_label") or "Get the Full Report: $149"
     fallback_url = cta.get("upsell_url")
 
@@ -1014,16 +1144,58 @@ def _render_full_report_purchase(cta):
     price_id = tier_def.get("stripe_price_id", "")
     billing_mode = tier_def.get("billing_mode", "payment")
 
-    st.subheader(headline)
-    st.write(body)
+    # Render as a branded card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #0B1F3A 0%, #1a3a5c 100%);
+        border-radius: 10px;
+        padding: 2rem 1.5rem;
+        margin: 1rem 0;
+        text-align: center;
+    ">
+        <div style="
+            font-family: 'Playfair Display', serif;
+            font-size: 1.5rem;
+            color: #F5F1E8;
+            margin-bottom: 0.75rem;
+        ">{headline}</div>
+        <div style="
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            color: #C8C4BC;
+            line-height: 1.6;
+            max-width: 500px;
+            margin: 0 auto 1rem auto;
+        ">
+            Your free diagnosis identified the gaps. The Full Report tells you
+            exactly what to do about them — with an AI consulting memo written
+            to your specific scores, industry benchmarks, and a prioritized
+            30/60/90 day action plan.
+        </div>
+        <div style="
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.75rem;
+        ">
+            <span style="font-family:'Inter',sans-serif;font-size:0.8rem;color:#F5F1E8;">
+                ◆ AI Executive Memo</span>
+            <span style="font-family:'Inter',sans-serif;font-size:0.8rem;color:#F5F1E8;">
+                ◆ Dimension Deep-Dives</span>
+            <span style="font-family:'Inter',sans-serif;font-size:0.8rem;color:#F5F1E8;">
+                ◆ ROI Estimates</span>
+            <span style="font-family:'Inter',sans-serif;font-size:0.8rem;color:#F5F1E8;">
+                ◆ 30/60/90 Plan</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     checkout_url = _get_cached_checkout_url(price_id, billing_mode)
     if checkout_url:
-        # One-click redirect to Stripe Checkout.
         st.link_button(label, checkout_url, type="primary",
                        use_container_width=True)
     elif not st.session_state.get("auth_user_id"):
-        # Anonymous path: prompt to sign in, plus a fallback link.
         st.info(
             "Sign in (sidebar) to purchase the Full Report, or click below "
             "to see what's included."
@@ -1031,7 +1203,6 @@ def _render_full_report_purchase(cta):
         if fallback_url:
             st.link_button(label, fallback_url, use_container_width=True)
     else:
-        # Logged in but Stripe not configured: fallback link.
         if fallback_url:
             st.link_button(label, fallback_url, type="primary",
                            use_container_width=True)
@@ -1541,14 +1712,54 @@ def render_progress():
 
 
 def render_wordmark():
+    step = st.session_state.current_step
     st.markdown(
-        f"<div style='letter-spacing:0.2em;font-family:\"Times New Roman\",serif;"
-        f"font-size:1.1rem;color:#0B1F3A;'>{BRAND['wordmark']}</div>",
+        f"<div style='letter-spacing:0.2em;font-family:\"Playfair Display\",\"Times New Roman\",serif;"
+        f"font-size:1.1rem;color:#0B1F3A;font-weight:600;'>{BRAND['wordmark']}</div>",
         unsafe_allow_html=True,
     )
     subtitle = BRAND["cover_subtitle"].get(MODE, "")
     if subtitle:
         st.caption(subtitle)
+
+    # Hero section on step 0 (landing page) for anonymous visitors
+    if step == 0 and not st.session_state.get("auth_user_id"):
+        st.markdown("""
+        <div style="
+            margin: 1.5rem 0 0.5rem 0;
+            padding: 1.5rem 1.25rem;
+            background: linear-gradient(135deg, #0B1F3A 0%, #1a3a5c 100%);
+            border-radius: 10px;
+            text-align: center;
+        ">
+            <div style="
+                font-family: 'Playfair Display', 'Times New Roman', serif;
+                font-size: 1.6rem;
+                color: #F5F1E8;
+                margin-bottom: 0.5rem;
+                line-height: 1.3;
+            ">Find what's load-bearing in your business</div>
+            <div style="
+                font-family: 'Inter', sans-serif;
+                font-size: 0.95rem;
+                color: #C8C4BC;
+                margin-bottom: 1rem;
+                line-height: 1.5;
+            ">A 10-minute diagnostic across 6 structural dimensions.
+            Built for owner-operators running $2M–$20M businesses.</div>
+            <div style="
+                display: inline-block;
+                background: rgba(245,241,232,0.15);
+                border: 1px solid rgba(245,241,232,0.3);
+                border-radius: 20px;
+                padding: 0.35rem 1rem;
+                font-family: 'Inter', sans-serif;
+                font-size: 0.8rem;
+                color: #F5F1E8;
+                letter-spacing: 0.02em;
+            ">No sign-up required · Free instant results · Takes ~10 min</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 def render_nav():
@@ -1640,11 +1851,146 @@ def _handle_checkout_return():
         pass
 
 
+def _inject_custom_css():
+    """Inject custom CSS to hide Streamlit branding, polish the UI, and
+    create a premium SaaS aesthetic instead of a developer-tool look."""
+    st.markdown("""
+    <style>
+    /* ── Hide Streamlit branding & chrome ── */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header[data-testid="stHeader"] {visibility: hidden; height: 0;}
+    div[data-testid="stDecoration"] {display: none;}
+    .viewerBadge_container__r5tak {display: none !important;}
+    div[data-testid="manage-app-button"] {display: none !important;}
+    .stDeployButton {display: none !important;}
+
+    /* ── Premium typography ── */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@400;600;700&display=swap');
+
+    h1, h2, h3, [data-testid="stHeading"] {
+        font-family: 'Playfair Display', 'Times New Roman', serif !important;
+        color: #0B1F3A !important;
+    }
+    .stMarkdown, .stCaption, p, li, label {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    }
+
+    /* ── Refined progress bar ── */
+    .stProgress > div > div {
+        background-color: #0B1F3A !important;
+    }
+
+    /* ── Card-like containers ── */
+    div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 8px;
+        border: 1px solid #E8E4DC;
+    }
+
+    /* ── Button polish ── */
+    .stButton > button[kind="primary"],
+    .stButton > button[data-testid="baseButton-primary"] {
+        background-color: #0B1F3A !important;
+        border: none !important;
+        border-radius: 6px !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.02em !important;
+        transition: background-color 0.2s ease !important;
+    }
+    .stButton > button[kind="primary"]:hover,
+    .stButton > button[data-testid="baseButton-primary"]:hover {
+        background-color: #163256 !important;
+    }
+    .stButton > button[kind="secondary"],
+    .stButton > button[data-testid="baseButton-secondary"] {
+        border-color: #0B1F3A !important;
+        color: #0B1F3A !important;
+        border-radius: 6px !important;
+    }
+
+    /* ── Link buttons ── */
+    .stLinkButton > a {
+        background-color: #0B1F3A !important;
+        border-radius: 6px !important;
+        font-weight: 500 !important;
+    }
+    .stLinkButton > a:hover {
+        background-color: #163256 !important;
+    }
+
+    /* ── Tables ── */
+    .stTable table {
+        border-radius: 6px;
+        overflow: hidden;
+    }
+    .stTable thead th {
+        background-color: #0B1F3A !important;
+        color: #F5F1E8 !important;
+        font-weight: 500 !important;
+    }
+
+    /* ── Metric cards ── */
+    div[data-testid="stMetric"] {
+        background-color: #FFFFFF;
+        border: 1px solid #E8E4DC;
+        border-radius: 8px;
+        padding: 1rem;
+    }
+    div[data-testid="stMetricValue"] {
+        font-family: 'Playfair Display', serif !important;
+        color: #0B1F3A !important;
+    }
+
+    /* ── Info/warning boxes ── */
+    .stAlert {
+        border-radius: 6px !important;
+    }
+
+    /* ── Radio buttons / form elements ── */
+    .stRadio > div {
+        gap: 0.5rem !important;
+    }
+
+    /* ── Sidebar polish ── */
+    section[data-testid="stSidebar"] {
+        background-color: #FAFAF7 !important;
+        border-right: 1px solid #E8E4DC !important;
+    }
+    section[data-testid="stSidebar"] .stMarkdown {
+        color: #2B2B2B !important;
+    }
+
+    /* ── Download button ── */
+    .stDownloadButton > button {
+        border-color: #0B1F3A !important;
+        color: #0B1F3A !important;
+        border-radius: 6px !important;
+        font-weight: 500 !important;
+    }
+
+    /* ── Mobile responsiveness ── */
+    @media (max-width: 768px) {
+        .block-container {
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }
+        div[data-testid="stMetric"] {
+            padding: 0.75rem;
+        }
+        h1 { font-size: 1.6rem !important; }
+        h2 { font-size: 1.3rem !important; }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
 def main():
     st.set_page_config(
         page_title=f"{BRAND['wordmark']} Audit",
+        page_icon="◆",
         layout="centered",
     )
+    _inject_custom_css()
     init_state()
 
     # Try to restore an in-progress draft from the browser's localStorage.

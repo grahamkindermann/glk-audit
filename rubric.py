@@ -234,7 +234,7 @@ DIMENSIONS = [
         "id": "personnel",
         "name": "Personnel & Org",
         "weight": 1.15,
-        "summary": "",
+        "summary": "How dependent is the business on the owner, and how deep is the leadership bench? This dimension measures whether the org can operate, decide, and execute without a single point of failure.",
         "questions": [
             {
                 "id": "per_01",
@@ -341,7 +341,7 @@ DIMENSIONS = [
         "id": "finance",
         "name": "Accounting & Finance",
         "weight": 1.25,
-        "summary": "",
+        "summary": "Can you see what's happening financially in real time, or are you flying blind between monthly closes? This dimension assesses whether your financial controls, reporting, and cash management are built to scale.",
         "questions": [
             {
                 "id": "fin_01",
@@ -459,7 +459,7 @@ DIMENSIONS = [
         "id": "software",
         "name": "Software Stack",
         "weight": 0.85,
-        "summary": "",
+        "summary": "Is your tech stack helping you scale or holding you back? This dimension evaluates whether your systems are integrated, documented, and built for growth rather than patched together.",
         "questions": [
             {
                 "id": "sw_01",
@@ -555,7 +555,7 @@ DIMENSIONS = [
         "id": "ai",
         "name": "AI Readiness",
         "weight": 0.50,
-        "summary": "",
+        "summary": "AI is reshaping every industry. This isn't about whether you're using it today — it's about whether you're positioned to adopt it when the time is right. A low score here is an opportunity, not a weakness.",
         "questions": [
             {
                 "id": "ai_01",
@@ -618,7 +618,7 @@ DIMENSIONS = [
         "id": "sales",
         "name": "Sales & Marketing",
         "weight": 1.00,
-        "summary": "",
+        "summary": "Revenue is oxygen. This dimension measures whether your pipeline, positioning, and customer acquisition are repeatable systems or dependent on the founder's personal network and hustle.",
         "questions": [
             {
                 "id": "sal_01",
@@ -725,7 +725,7 @@ DIMENSIONS = [
         "id": "ops",
         "name": "Operations & Process",
         "weight": 1.10,
-        "summary": "",
+        "summary": "Operations is where margin lives. This dimension assesses whether your core workflows are documented, measured, and improvable — or whether institutional knowledge walks out the door when someone quits.",
         "questions": [
             {
                 "id": "ops_01",
