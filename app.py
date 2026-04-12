@@ -1758,7 +1758,7 @@ def render_wordmark():
                 margin-bottom: 1rem;
                 line-height: 1.5;
             ">A 10-minute diagnostic across 6 structural dimensions.
-            Built for owner-operators running $2M–$20M businesses.</div>
+            Built for owner-operators of established businesses.</div>
             <div style="
                 display: inline-block;
                 background: rgba(245,241,232,0.15);
