@@ -209,13 +209,24 @@ div.stButton > button, div.stLinkButton > a {
   letter-spacing: 0.01em !important;
   transition: background 0.15s, color 0.15s !important;
 }
+div.stButton > button *, div.stLinkButton > a * {
+  color: var(--bone) !important;
+}
 div.stButton > button:hover, div.stLinkButton > a:hover {
   background: var(--ink-2) !important;
   color: var(--bone) !important;
 }
-div.stButton > button:focus {
+div.stButton > button:hover *, div.stLinkButton > a:hover * {
+  color: var(--bone) !important;
+}
+div.stButton > button:focus, div.stButton > button:active {
   box-shadow: none !important;
   outline: 1px solid var(--ink) !important;
+  background: var(--ink) !important;
+  color: var(--bone) !important;
+}
+div.stButton > button:focus *, div.stButton > button:active * {
+  color: var(--bone) !important;
 }
 
 div[data-testid="stTextInput"] input,
