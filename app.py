@@ -12,6 +12,7 @@ Reads the rubric directly from rubric.py. Deploy as-is on Streamlit Cloud.
 
 import os
 import math
+import requests
 import streamlit as st
 
 from rubric import (
@@ -23,6 +24,8 @@ from rubric import (
     INSUFFICIENT_DATA_THRESHOLD,
     INSUFFICIENT_DATA_LABEL,
     BRAND,
+    CTA,
+    MODE,
 )
 
 # ---------------------------------------------------------------------------
@@ -34,6 +37,18 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="collapsed",
 )
+
+# Social / OG meta tags (body-level; Streamlit doesn't allow <head> injection)
+_SOCIAL_META = """
+<meta property="og:title" content="The Structural Audit — A diagnostic of the company, not the founder" />
+<meta property="og:description" content="Fifty questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://structural-audit.streamlit.app/" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="The Structural Audit" />
+<meta name="twitter:description" content="A B2B operational diagnostic across six dimensions. Free." />
+"""
+st.markdown(_SOCIAL_META, unsafe_allow_html=True)
 
 # Custom CSS. Matches the visual register of the Structural Advantage Index.
 CSS = """
@@ -407,6 +422,42 @@ def compute_results():
     }
 
 # ---------------------------------------------------------------------------
+# Email capture (Loops API)
+# ---------------------------------------------------------------------------
+def _capture_email(email: str, company: str, band: str, score: float):
+    """Send lead to Loops for nurture drip. Fails silently — no error shown to user."""
+    api_key = os.environ.get("LOOPS_API_KEY") or st.secrets.get("LOOPS_API_KEY", "")
+    if not api_key:
+        # No key configured; just mark as captured so UX still works
+        st.session_state.email_captured = True
+        return
+    try:
+        resp = requests.post(
+            "https://app.loops.so/api/v1/contacts/create",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "email": email,
+                "source": "structural_audit",
+                "company": company,
+                "auditBand": band,
+                "auditScore": round(score, 1),
+            },
+            timeout=8,
+        )
+        # Fire the event for the drip sequence
+        requests.post(
+            "https://app.loops.so/api/v1/events/send",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"email": email, "eventName": "audit_completed_anonymous"},
+            timeout=8,
+        )
+        st.session_state.email_captured = True
+    except Exception:
+        # Fail silently — don't let email capture break the results page
+        st.session_state.email_captured = True
+
+
+# ---------------------------------------------------------------------------
 # Screens
 # ---------------------------------------------------------------------------
 def screen_intro():
@@ -415,7 +466,7 @@ def screen_intro():
     st.markdown("# An operator's diagnostic of the business itself.")
     st.markdown(
         '<p class="sa-lede">The Structural Audit is the companion to the Structural Advantage Index. '
-        'The Index reads the founder. This reads the company. Fifty-eight questions across six dimensions, '
+        'The Index reads the founder. This reads the company. Fifty questions across six dimensions, '
         'weighted scoring, industry benchmarks where they exist, and a risk-ranked output that tells you '
         'what is load-bearing and what is quietly carrying disproportionate risk.</p>',
         unsafe_allow_html=True,
@@ -432,19 +483,12 @@ The six dimensions, weighted by their structural impact on durability and enterp
 
 This is an honest tool. You will be asked things you do not want to answer. The value is in answering them anyway.
 """)
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("Begin the audit", use_container_width=True):
-            go("context")
-    with col2:
-        st.markdown(
-            '<a href="#" onclick="return false" style="font-size:14px;color:var(--muted);text-decoration:none;letter-spacing:0.1em;text-transform:uppercase">or,</a>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            "If you have not taken the Index yet, start there. Know your shape as an operator first. "
-            "[Open the Index &rarr;](https://structuraladvantagediagnostic.netlify.app/)",
-        )
+    if st.button("Begin the audit", use_container_width=False):
+        go("context")
+    st.markdown(
+        "If you have not taken the Index yet, start there. Know your shape as an operator first. "
+        "[Open the Index &rarr;](https://structuraladvantagediagnostic.netlify.app/)",
+    )
     st.markdown(
         '<p class="sa-footnote">Your answers stay in this browser session. Nothing is stored on a server. '
         'If you close the tab, your progress is lost.</p>',
@@ -507,12 +551,18 @@ def render_question(q):
         else:
             st.session_state.answers[qid] = int(choice.split(" ")[0])
     elif q["type"] == "yesno":
-        options = ["Yes", "No"]
+        options = ["—", "Yes", "No"]
         if q.get("allow_na"):
-            options = options + ["N/A"]
-        idx = options.index(current) if current in options else 0
+            options = ["—", "Yes", "No", "N/A"]
+        if current in ("Yes", "No", "N/A"):
+            idx = options.index(current)
+        else:
+            idx = 0  # "—" placeholder = unanswered
         choice = st.radio(q["text"], options, index=idx, key=f"rad_{qid}", horizontal=True)
-        st.session_state.answers[qid] = choice
+        if choice == "—":
+            st.session_state.answers[qid] = None
+        else:
+            st.session_state.answers[qid] = choice
     elif q["type"] in ("number", "percent"):
         bench = BENCHMARKS.get((st.session_state.industry, qid))
         note = ""
@@ -664,14 +714,25 @@ def screen_results():
         "read-out call. Thirty minutes. The audit in front of us. A pressure-test of the top three risks and the one "
         "move that would actually change the score by the next quarter."
     )
-    mail_subject = f"Structural audit read-out ({company})"
-    mail_url = f"mailto:hello@grahamkindermann.com?subject={mail_subject.replace(' ', '%20')}"
+    cal_url = CTA.get(MODE, CTA["lead_magnet"])["primary_url"]
+    st.link_button("Book a 30-min structural review", cal_url, use_container_width=False)
+
+    # --- Email capture (optional, lightweight) ---
+    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+    st.markdown("### Get the write-up")
     st.markdown(
-        f'<a href="{mail_url}" style="display:inline-block;background:var(--ink);color:var(--bone);padding:14px 28px;'
-        f'text-decoration:none;font-family:Inter,sans-serif;font-weight:500;font-size:15px;border:1px solid var(--ink)">'
-        f'Request a read-out</a>',
-        unsafe_allow_html=True,
+        "Leave an email and we will send a short written interpretation of this score — "
+        "what the band means, which risks are structural, and one concrete next step. No spam. No sequence."
     )
+    if not st.session_state.get("email_captured"):
+        email_val = st.text_input("Email address", key="capture_email", placeholder="you@company.com")
+        if st.button("Send me the write-up", key="btn_capture"):
+            if email_val and "@" in email_val and "." in email_val:
+                _capture_email(email_val, company, band_label, r["overall"])
+            else:
+                st.warning("Please enter a valid email address.")
+    else:
+        st.success("Got it. Check your inbox.")
 
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     st.markdown("### If you have not taken the Index yet")
