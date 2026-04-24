@@ -275,35 +275,40 @@ st.markdown(CSS, unsafe_allow_html=True)
 import streamlit.components.v1 as _components
 
 def _install_scroll_watcher():
-    """Install a one-time persistent scroll watcher in the parent document.
-    It watches for Streamlit step-indicator text changes and resets scroll."""
+    """Inject a persistent scroll-to-top watcher into the parent Streamlit
+    document.  Streamlit patches the DOM via *attribute* mutations (not
+    childList), so we observe attributes+subtree and compare the page text
+    to detect real page transitions vs. minor widget updates."""
     _components.html(
         """
         <script>
         (function(){
           try {
             var pd = window.parent.document;
-            // Only install once
             if (pd._saScrollInstalled) return;
             pd._saScrollInstalled = true;
 
-            var s = pd.querySelector('section.stMain');
-            if (!s) return;
-
-            // Watch for any large DOM mutation (= page transition).
-            // After a mutation, hammer scrollTop=0 for 1.5s.
-            var hammering = false;
-            var ob = new MutationObserver(function(mutations){
-              // Only react to significant changes (childList, many nodes)
-              var dominated = mutations.some(function(m){
-                return m.addedNodes.length > 2 || m.removedNodes.length > 2;
-              });
-              if (!dominated || hammering) return;
-              hammering = true;
-              var iv = setInterval(function(){ s.scrollTop = 0; }, 20);
-              setTimeout(function(){ clearInterval(iv); hammering = false; }, 1500);
-            });
-            ob.observe(s, { childList: true, subtree: true });
+            var tag = pd.createElement('script');
+            tag.textContent = [
+              '(function(){',
+              '  var s = document.querySelector("section.stMain");',
+              '  if (!s) return;',
+              '  var lastText = s.innerText.substring(0, 80);',
+              '  var hammering = false;',
+              '  new MutationObserver(function(){',
+              '    if (hammering) return;',
+              '    var nowText = s.innerText.substring(0, 80);',
+              '    if (nowText !== lastText) {',
+              '      lastText = nowText;',
+              '      hammering = true;',
+              '      s.scrollTop = 0;',
+              '      var iv = setInterval(function(){ s.scrollTop = 0; }, 20);',
+              '      setTimeout(function(){ clearInterval(iv); hammering = false; }, 1500);',
+              '    }',
+              '  }).observe(s, { attributes: true, subtree: true });',
+              '})();'
+            ].join('\\n');
+            pd.body.appendChild(tag);
           } catch(e) {}
         })();
         </script>
