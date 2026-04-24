@@ -280,22 +280,16 @@ def _scroll_to_top():
         <script>
         (function(){
           function doScroll() {
-            var w = window;
-            for (var i = 0; i < 5; i++) {
-              try {
-                var s = w.document.querySelector('section.stMain')
-                     || w.document.querySelector('section.main');
-                if (s) { s.scrollTop = 0; return; }
-                if (w === w.parent) break;
-                w = w.parent;
-              } catch(e) { break; }
-            }
+            try {
+              var s = window.parent.document.querySelector('section.stMain');
+              if (s) s.scrollTop = 0;
+            } catch(e) {}
           }
-          // Fire immediately, then again after Streamlit finishes rendering
+          // Keep firing until well after Streamlit finishes rendering.
+          // The interval clears itself after 1.5s.
           doScroll();
-          setTimeout(doScroll, 50);
-          setTimeout(doScroll, 150);
-          setTimeout(doScroll, 300);
+          var iv = setInterval(doScroll, 50);
+          setTimeout(function(){ clearInterval(iv); }, 1500);
         })();
         </script>
         """,
