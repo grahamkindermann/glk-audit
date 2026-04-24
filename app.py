@@ -267,6 +267,17 @@ div[data-testid="stRadio"] label {
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
+# Scroll to top on every page transition
+_SCROLL_TOP_JS = """
+<script>
+(function(){
+  var main = window.parent.document.querySelector('section.main');
+  if(main) main.scrollTo({top: 0, behavior: 'instant'});
+  window.parent.document.documentElement.scrollTo({top: 0, behavior: 'instant'});
+})();
+</script>
+"""
+
 # ---------------------------------------------------------------------------
 # Session state
 # ---------------------------------------------------------------------------
@@ -496,6 +507,7 @@ This is an honest tool. You will be asked things you do not want to answer. The 
     )
 
 def screen_context():
+    st.markdown(_SCROLL_TOP_JS, unsafe_allow_html=True)
     mark()
     st.markdown('<div class="sa-meta">Step one of seven . Company context</div>', unsafe_allow_html=True)
     st.markdown("## Before the questions, three pieces of context.")
@@ -551,15 +563,15 @@ def render_question(q):
         else:
             st.session_state.answers[qid] = int(choice.split(" ")[0])
     elif q["type"] == "yesno":
-        options = ["—", "Yes", "No"]
+        options = ["Skip", "Yes", "No"]
         if q.get("allow_na"):
-            options = ["—", "Yes", "No", "N/A"]
+            options = ["Skip", "Yes", "No", "N/A"]
         if current in ("Yes", "No", "N/A"):
             idx = options.index(current)
         else:
-            idx = 0  # "—" placeholder = unanswered
+            idx = 0  # "Skip" placeholder = unanswered
         choice = st.radio(q["text"], options, index=idx, key=f"rad_{qid}", horizontal=True)
-        if choice == "—":
+        if choice == "Skip":
             st.session_state.answers[qid] = None
         else:
             st.session_state.answers[qid] = choice
@@ -568,11 +580,15 @@ def render_question(q):
         note = ""
         if bench:
             note = f" Industry p25 / p50 / p75: {bench['p25']} / {bench['p50']} / {bench['p75']}."
+        placeholder = "e.g. 15" if q["type"] == "percent" else "e.g. 500000"
+        if bench:
+            placeholder = f"e.g. {bench['p50']}"
         val = st.text_input(
             q["text"] + (" (numeric value, blank to skip)" if not note else ""),
             value="" if current in (None, "N/A") else str(current),
             key=f"num_{qid}",
             help=note.strip() if note else None,
+            placeholder=placeholder,
         )
         if val.strip() == "":
             st.session_state.answers[qid] = "N/A"
@@ -584,6 +600,7 @@ def render_question(q):
                 st.caption("Not a number. This question will be skipped.")
 
 def screen_dimension():
+    st.markdown(_SCROLL_TOP_JS, unsafe_allow_html=True)
     mark()
     idx = st.session_state.dim_idx
     dim = DIMENSIONS[idx]
@@ -594,7 +611,13 @@ def screen_dimension():
     # Progress
     st.progress((idx) / total)
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
-    for q in dim["questions"]:
+    num_q = len(dim["questions"])
+    for qi, q in enumerate(dim["questions"], 1):
+        st.markdown(
+            f'<p style="font-size:0.78rem;letter-spacing:0.12em;text-transform:uppercase;'
+            f'color:var(--muted);margin:0 0 2px">Question {qi} of {num_q}</p>',
+            unsafe_allow_html=True,
+        )
         render_question(q)
         st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
@@ -617,6 +640,7 @@ def pct_bar(pct):
     )
 
 def screen_results():
+    st.markdown(_SCROLL_TOP_JS, unsafe_allow_html=True)
     mark()
     r = compute_results()
     st.markdown('<div class="sa-meta">Results . The structural audit</div>', unsafe_allow_html=True)
@@ -645,6 +669,7 @@ def screen_results():
         '<p class="sa-lede" style="font-size:1.05rem">Any dimension with insufficient answered weight is excluded from the overall score and marked as such.</p>',
         unsafe_allow_html=True,
     )
+    dim_id_to_idx = {dim["id"]: i for i, dim in enumerate(DIMENSIONS)}
     for d in r["dimensions"]:
         if d["score"] is None:
             st.markdown(
@@ -652,6 +677,11 @@ def screen_results():
                 f'<div class="val" style="color:var(--muted)">{INSUFFICIENT_DATA_LABEL}</div></div>',
                 unsafe_allow_html=True,
             )
+            jump_idx = dim_id_to_idx.get(d["id"])
+            if jump_idx is not None:
+                if st.button(f"Complete {d['name']} questions", key=f"jump_{d['id']}"):
+                    st.session_state.dim_idx = jump_idx
+                    go("dim")
         else:
             st.markdown(
                 f'<div class="sa-card"><div class="label">{d["name"]}</div>'
@@ -722,7 +752,8 @@ def screen_results():
     st.markdown("### Get the write-up")
     st.markdown(
         "Leave an email and we will send a short written interpretation of this score — "
-        "what the band means, which risks are structural, and one concrete next step. No spam. No sequence."
+        "what the band means, which risks are structural, and one concrete next step. "
+        "You will get the write-up and a few follow-up notes. That is it."
     )
     if not st.session_state.get("email_captured"):
         email_val = st.text_input("Email address", key="capture_email", placeholder="you@company.com")
