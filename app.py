@@ -268,27 +268,33 @@ div[data-testid="stRadio"] label {
 st.markdown(CSS, unsafe_allow_html=True)
 
 # Scroll to top on every page transition.
-# The scrollable container in Streamlit Cloud is <section class="stMain">.
-# st.markdown JS runs inside the iframe, so we target it directly (no
-# window.parent needed).  A unique id forces re-execution on every rerun.
-import time as _time
+# st.markdown strips <script> tags, so we use st.components.v1.html() which
+# creates a tiny iframe that *can* run JS.  From that iframe we reach up
+# through parent frames to find Streamlit's <section class="stMain"> and
+# reset its scrollTop.
+import streamlit.components.v1 as _components
 
-def _scroll_top_js():
-    uid = int(_time.time() * 1000)
-    return f"""
-<div id="st-{uid}"></div>
-<script>
-(function(){{
-  var s = document.querySelector('section.stMain')
-       || document.querySelector('section.main')
-       || document.querySelector('[data-testid="stMain"]');
-  if (s) s.scrollTop = 0;
-  document.documentElement.scrollTop = 0;
-  document.body.scrollTop = 0;
-  window.scrollTo(0, 0);
-}})();
-</script>
-"""
+def _scroll_to_top():
+    _components.html(
+        """
+        <script>
+        (function(){
+          // Walk up through parent frames to find the Streamlit container
+          var w = window;
+          for (var i = 0; i < 5; i++) {
+            try {
+              var s = w.document.querySelector('section.stMain')
+                   || w.document.querySelector('section.main');
+              if (s) { s.scrollTop = 0; break; }
+              if (w === w.parent) break;
+              w = w.parent;
+            } catch(e) { break; }
+          }
+        })();
+        </script>
+        """,
+        height=0,
+    )
 
 # ---------------------------------------------------------------------------
 # Session state
@@ -519,7 +525,7 @@ This is an honest tool. You will be asked things you do not want to answer. The 
     )
 
 def screen_context():
-    st.markdown(_scroll_top_js(), unsafe_allow_html=True)
+    _scroll_to_top()
     mark()
     st.markdown('<div class="sa-meta">Step one of seven . Company context</div>', unsafe_allow_html=True)
     st.markdown("## Before the questions, three pieces of context.")
@@ -612,7 +618,7 @@ def render_question(q):
                 st.caption("Not a number. This question will be skipped.")
 
 def screen_dimension():
-    st.markdown(_scroll_top_js(), unsafe_allow_html=True)
+    _scroll_to_top()
     mark()
     idx = st.session_state.dim_idx
     dim = DIMENSIONS[idx]
@@ -652,7 +658,7 @@ def pct_bar(pct):
     )
 
 def screen_results():
-    st.markdown(_scroll_top_js(), unsafe_allow_html=True)
+    _scroll_to_top()
     mark()
     r = compute_results()
     st.markdown('<div class="sa-meta">Results . The structural audit</div>', unsafe_allow_html=True)
