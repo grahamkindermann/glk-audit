@@ -267,14 +267,40 @@ div[data-testid="stRadio"] label {
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
-# Scroll to top on every page transition
-_SCROLL_TOP_JS = """
+# Scroll to top on every page transition.
+# Uses a unique id each run so the browser re-executes the script instead of
+# deduplicating it, and walks up through iframes to find the real scrollable
+# container that Streamlit uses.
+import time as _time
+
+def _scroll_top_js():
+    uid = int(_time.time() * 1000)
+    return f"""
+<div id="scroll-{uid}"></div>
 <script>
-(function(){
-  var main = window.parent.document.querySelector('section.main');
-  if(main) main.scrollTo({top: 0, behavior: 'instant'});
-  window.parent.document.documentElement.scrollTo({top: 0, behavior: 'instant'});
-})();
+(function(){{
+  // Try multiple scroll targets — Streamlit nests things differently
+  // depending on version and hosting.
+  try {{
+    var el = document.getElementById('scroll-{uid}');
+    if (el) el.scrollIntoView(true);
+  }} catch(e) {{}}
+  try {{
+    var main = window.parent.document.querySelector('section.main');
+    if (main) main.scrollTop = 0;
+  }} catch(e) {{}}
+  try {{
+    var blocks = window.parent.document.querySelectorAll('[data-testid="stAppViewBlockContainer"]');
+    blocks.forEach(function(b){{ b.scrollTop = 0; }});
+  }} catch(e) {{}}
+  try {{
+    window.parent.document.documentElement.scrollTop = 0;
+    window.parent.document.body.scrollTop = 0;
+  }} catch(e) {{}}
+  try {{
+    window.parent.scrollTo(0, 0);
+  }} catch(e) {{}}
+}})();
 </script>
 """
 
@@ -507,7 +533,7 @@ This is an honest tool. You will be asked things you do not want to answer. The 
     )
 
 def screen_context():
-    st.markdown(_SCROLL_TOP_JS, unsafe_allow_html=True)
+    st.markdown(_scroll_top_js(), unsafe_allow_html=True)
     mark()
     st.markdown('<div class="sa-meta">Step one of seven . Company context</div>', unsafe_allow_html=True)
     st.markdown("## Before the questions, three pieces of context.")
@@ -600,7 +626,7 @@ def render_question(q):
                 st.caption("Not a number. This question will be skipped.")
 
 def screen_dimension():
-    st.markdown(_SCROLL_TOP_JS, unsafe_allow_html=True)
+    st.markdown(_scroll_top_js(), unsafe_allow_html=True)
     mark()
     idx = st.session_state.dim_idx
     dim = DIMENSIONS[idx]
@@ -640,7 +666,7 @@ def pct_bar(pct):
     )
 
 def screen_results():
-    st.markdown(_SCROLL_TOP_JS, unsafe_allow_html=True)
+    st.markdown(_scroll_top_js(), unsafe_allow_html=True)
     mark()
     r = compute_results()
     st.markdown('<div class="sa-meta">Results . The structural audit</div>', unsafe_allow_html=True)
