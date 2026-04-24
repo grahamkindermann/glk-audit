@@ -274,22 +274,37 @@ st.markdown(CSS, unsafe_allow_html=True)
 # reset its scrollTop.
 import streamlit.components.v1 as _components
 
-def _scroll_to_top():
+def _install_scroll_watcher():
+    """Install a one-time persistent scroll watcher in the parent document.
+    It watches for Streamlit step-indicator text changes and resets scroll."""
     _components.html(
         """
         <script>
         (function(){
-          function doScroll() {
-            try {
-              var s = window.parent.document.querySelector('section.stMain');
-              if (s) s.scrollTop = 0;
-            } catch(e) {}
-          }
-          // Keep firing until well after Streamlit finishes rendering.
-          // The interval clears itself after 1.5s.
-          doScroll();
-          var iv = setInterval(doScroll, 50);
-          setTimeout(function(){ clearInterval(iv); }, 1500);
+          try {
+            var pd = window.parent.document;
+            // Only install once
+            if (pd._saScrollInstalled) return;
+            pd._saScrollInstalled = true;
+
+            var s = pd.querySelector('section.stMain');
+            if (!s) return;
+
+            // Watch for any large DOM mutation (= page transition).
+            // After a mutation, hammer scrollTop=0 for 1.5s.
+            var hammering = false;
+            var ob = new MutationObserver(function(mutations){
+              // Only react to significant changes (childList, many nodes)
+              var dominated = mutations.some(function(m){
+                return m.addedNodes.length > 2 || m.removedNodes.length > 2;
+              });
+              if (!dominated || hammering) return;
+              hammering = true;
+              var iv = setInterval(function(){ s.scrollTop = 0; }, 20);
+              setTimeout(function(){ clearInterval(iv); hammering = false; }, 1500);
+            });
+            ob.observe(s, { childList: true, subtree: true });
+          } catch(e) {}
         })();
         </script>
         """,
@@ -525,7 +540,7 @@ This is an honest tool. You will be asked things you do not want to answer. The 
     )
 
 def screen_context():
-    _scroll_to_top()
+    _install_scroll_watcher()
     mark()
     st.markdown('<div class="sa-meta">Step one of seven . Company context</div>', unsafe_allow_html=True)
     st.markdown("## Before the questions, three pieces of context.")
@@ -618,7 +633,7 @@ def render_question(q):
                 st.caption("Not a number. This question will be skipped.")
 
 def screen_dimension():
-    _scroll_to_top()
+    _install_scroll_watcher()
     mark()
     idx = st.session_state.dim_idx
     dim = DIMENSIONS[idx]
@@ -658,7 +673,7 @@ def pct_bar(pct):
     )
 
 def screen_results():
-    _scroll_to_top()
+    _install_scroll_watcher()
     mark()
     r = compute_results()
     st.markdown('<div class="sa-meta">Results . The structural audit</div>', unsafe_allow_html=True)
