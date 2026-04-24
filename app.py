@@ -279,17 +279,23 @@ def _scroll_to_top():
         """
         <script>
         (function(){
-          // Walk up through parent frames to find the Streamlit container
-          var w = window;
-          for (var i = 0; i < 5; i++) {
-            try {
-              var s = w.document.querySelector('section.stMain')
-                   || w.document.querySelector('section.main');
-              if (s) { s.scrollTop = 0; break; }
-              if (w === w.parent) break;
-              w = w.parent;
-            } catch(e) { break; }
+          function doScroll() {
+            var w = window;
+            for (var i = 0; i < 5; i++) {
+              try {
+                var s = w.document.querySelector('section.stMain')
+                     || w.document.querySelector('section.main');
+                if (s) { s.scrollTop = 0; return; }
+                if (w === w.parent) break;
+                w = w.parent;
+              } catch(e) { break; }
+            }
           }
+          // Fire immediately, then again after Streamlit finishes rendering
+          doScroll();
+          setTimeout(doScroll, 50);
+          setTimeout(doScroll, 150);
+          setTimeout(doScroll, 300);
         })();
         </script>
         """,
