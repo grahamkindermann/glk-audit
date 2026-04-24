@@ -268,38 +268,24 @@ div[data-testid="stRadio"] label {
 st.markdown(CSS, unsafe_allow_html=True)
 
 # Scroll to top on every page transition.
-# Uses a unique id each run so the browser re-executes the script instead of
-# deduplicating it, and walks up through iframes to find the real scrollable
-# container that Streamlit uses.
+# The scrollable container in Streamlit Cloud is <section class="stMain">.
+# st.markdown JS runs inside the iframe, so we target it directly (no
+# window.parent needed).  A unique id forces re-execution on every rerun.
 import time as _time
 
 def _scroll_top_js():
     uid = int(_time.time() * 1000)
     return f"""
-<div id="scroll-{uid}"></div>
+<div id="st-{uid}"></div>
 <script>
 (function(){{
-  // Try multiple scroll targets — Streamlit nests things differently
-  // depending on version and hosting.
-  try {{
-    var el = document.getElementById('scroll-{uid}');
-    if (el) el.scrollIntoView(true);
-  }} catch(e) {{}}
-  try {{
-    var main = window.parent.document.querySelector('section.main');
-    if (main) main.scrollTop = 0;
-  }} catch(e) {{}}
-  try {{
-    var blocks = window.parent.document.querySelectorAll('[data-testid="stAppViewBlockContainer"]');
-    blocks.forEach(function(b){{ b.scrollTop = 0; }});
-  }} catch(e) {{}}
-  try {{
-    window.parent.document.documentElement.scrollTop = 0;
-    window.parent.document.body.scrollTop = 0;
-  }} catch(e) {{}}
-  try {{
-    window.parent.scrollTo(0, 0);
-  }} catch(e) {{}}
+  var s = document.querySelector('section.stMain')
+       || document.querySelector('section.main')
+       || document.querySelector('[data-testid="stMain"]');
+  if (s) s.scrollTop = 0;
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+  window.scrollTo(0, 0);
 }})();
 </script>
 """
