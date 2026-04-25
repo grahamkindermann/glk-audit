@@ -319,6 +319,27 @@ def _install_scroll_watcher():
         height=0,
     )
 
+def _install_beforeunload():
+    """Warn users before they close the tab mid-audit."""
+    _components.html(
+        """
+        <script>
+        (function(){
+          try {
+            var pd = window.parent;
+            if (pd._saUnloadInstalled) return;
+            pd._saUnloadInstalled = true;
+            pd.addEventListener('beforeunload', function(e) {
+              e.preventDefault();
+              e.returnValue = '';
+            });
+          } catch(e) {}
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
 # ---------------------------------------------------------------------------
 # State persistence (save/resume codes + localStorage auto-save)
 # ---------------------------------------------------------------------------
@@ -333,6 +354,10 @@ def _encode_state():
         "p": ss.get("respondent", ""),
         "d": ss.get("dim_idx", 0),
         "a": ss.get("answers", {}),
+        "hc": ss.get("headcount", ""),
+        "em": ss.get("ebitda_margin", ""),
+        "yo": ss.get("years_in_op", ""),
+        "oh": ss.get("owner_hours", ""),
     }
     raw = json.dumps(payload, separators=(",", ":")).encode()
     compressed = zlib.compress(raw, 9)
@@ -353,6 +378,10 @@ def _decode_state(code):
         ss["respondent"] = payload.get("p", "")
         ss["dim_idx"] = payload.get("d", 0)
         ss["answers"] = payload.get("a", {})
+        ss["headcount"] = payload.get("hc", "")
+        ss["ebitda_margin"] = payload.get("em", "")
+        ss["years_in_op"] = payload.get("yo", "")
+        ss["owner_hours"] = payload.get("oh", "")
         return True
     except Exception:
         return False
@@ -386,6 +415,10 @@ def _init():
     ss.setdefault("respondent", "")
     ss.setdefault("answers", {})
     ss.setdefault("dim_idx", 0)
+    ss.setdefault("headcount", "")
+    ss.setdefault("ebitda_margin", "")
+    ss.setdefault("years_in_op", "")
+    ss.setdefault("owner_hours", "")
 
 _init()
 
@@ -590,6 +623,24 @@ The six dimensions, weighted by their structural impact on durability and enterp
 
 This is an honest tool. You will be asked things you do not want to answer. The value is in answering them anyway.
 """)
+    with st.expander("Have these numbers ready"):
+        st.markdown(
+            "Most of the audit is qualitative. A handful of questions ask for specific metrics. "
+            "You do not need exact figures, but reasonable estimates will sharpen the result."
+        )
+        st.markdown("""
+- Annual voluntary turnover (%)
+- Average days to fill a role
+- Days to close monthly books
+- Accounts receivable over 60 days (%)
+- Number of paid SaaS tools in use
+- Annual software spend as % of revenue
+- Number of AI workflows in production
+- Customer acquisition cost ($)
+- Monthly customer churn rate (%)
+- On-time, in-full delivery rate (%)
+- Mean time to resolve customer issues (hours)
+""")
     if st.button("Begin the audit", use_container_width=False):
         go("context")
 
@@ -636,10 +687,11 @@ This is an honest tool. You will be asked things you do not want to answer. The 
 
 def screen_context():
     _install_scroll_watcher()
+    _install_beforeunload()
     _save_to_localstorage()
     mark()
     st.markdown('<div class="sa-meta">Step one of seven . Company context</div>', unsafe_allow_html=True)
-    st.markdown("## Before the questions, three pieces of context.")
+    st.markdown("## Before the questions, a few pieces of context.")
     st.markdown(
         '<p class="sa-lede">The quantitative questions are scored against industry benchmarks. '
         'Telling us the industry sharpens the result. If none of the options fit cleanly, choose the closest.</p>',
@@ -659,6 +711,28 @@ def screen_context():
         "Your role (e.g., Founder / CEO, COO, President)",
         value=st.session_state.respondent,
     )
+    # Optional firmographics — not scored, but useful for context and future reporting
+    with st.expander("Optional: additional company details"):
+        st.session_state.headcount = st.text_input(
+            "Full-time headcount",
+            value=st.session_state.headcount,
+            placeholder="e.g. 25",
+        )
+        st.session_state.ebitda_margin = st.text_input(
+            "EBITDA margin (%)",
+            value=st.session_state.ebitda_margin,
+            placeholder="e.g. 18",
+        )
+        st.session_state.years_in_op = st.text_input(
+            "Years in operation",
+            value=st.session_state.years_in_op,
+            placeholder="e.g. 7",
+        )
+        st.session_state.owner_hours = st.text_input(
+            "Owner's weekly hours in the business",
+            value=st.session_state.owner_hours,
+            placeholder="e.g. 55",
+        )
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
@@ -730,6 +804,7 @@ def render_question(q):
 
 def screen_dimension():
     _install_scroll_watcher()
+    _install_beforeunload()
     _save_to_localstorage()
     mark()
     idx = st.session_state.dim_idx
@@ -739,7 +814,7 @@ def screen_dimension():
     st.markdown(f"## {dim['name']}")
     st.markdown(f'<p class="sa-lede">{dim["summary"]}</p>', unsafe_allow_html=True)
     # Progress
-    st.progress((idx) / total)
+    st.progress((idx + 1) / total)
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     num_q = len(dim["questions"])
     for qi, q in enumerate(dim["questions"], 1):
@@ -797,6 +872,33 @@ def screen_results():
     )
     if band_narrative:
         st.markdown(f"<p>{band_narrative}</p>", unsafe_allow_html=True)
+
+    # Dynamic executive summary
+    scored_dims = [d for d in r["dimensions"] if d["score"] is not None]
+    if scored_dims:
+        weakest = min(scored_dims, key=lambda d: d["score"])
+        strongest = max(scored_dims, key=lambda d: d["score"])
+        top_risk_text = ""
+        if r["risks"]:
+            top_risk_q = r["risks"][0][0]
+            top_risk_dim = r["risks"][0][1]
+            top_risk_text = (
+                f" The single highest-weighted risk sits in {top_risk_dim['name']}: "
+                f"<em>&ldquo;{top_risk_q['text']}&rdquo;</em>"
+            )
+        exec_summary = (
+            f"{company} scored {r['overall']:.1f}, placing it in the <strong>{band_label}</strong> band. "
+            f"The weakest dimension is {weakest['name']} at {weakest['score']:.1f}. "
+            f"The strongest is {strongest['name']} at {strongest['score']:.1f}."
+            f"{top_risk_text}"
+        )
+        st.markdown(
+            f'<div style="border-left:3px solid var(--accent);padding:14px 18px;margin:1.5rem 0;'
+            f'background:#FBF8F1;font-size:1.02rem;line-height:1.55;color:var(--ink-2)">'
+            f'{exec_summary}</div>',
+            unsafe_allow_html=True,
+        )
+
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
 
     # Dimensions
@@ -836,13 +938,13 @@ def screen_results():
             else:
                 bench_line = f'<div style="font-size:0.82rem;color:var(--muted);margin-top:4px">{above} of {benchmarked_total} benchmarked metrics at or above industry median</div>'
 
+        jump_idx = dim_id_to_idx.get(d["id"])
         if d["score"] is None:
             st.markdown(
                 f'<div class="sa-card"><div class="label">{d["name"]}</div>'
                 f'<div class="val" style="color:var(--muted)">{INSUFFICIENT_DATA_LABEL}</div></div>',
                 unsafe_allow_html=True,
             )
-            jump_idx = dim_id_to_idx.get(d["id"])
             if jump_idx is not None:
                 if st.button(f"Complete {d['name']} questions", key=f"jump_{d['id']}"):
                     st.session_state.dim_idx = jump_idx
@@ -855,6 +957,10 @@ def screen_results():
                 f'{bench_line}</div>',
                 unsafe_allow_html=True,
             )
+            if jump_idx is not None:
+                if st.button(f"Edit {d['name']} answers", key=f"edit_{d['id']}"):
+                    st.session_state.dim_idx = jump_idx
+                    go("dim")
 
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
 
@@ -939,9 +1045,69 @@ def screen_results():
         "[Open the Index &rarr;](https://structuraladvantagediagnostic.netlify.app/)"
     )
 
+    # --- Historical comparison ---
+    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+    st.markdown("### Compare to a previous audit")
+    with st.expander("Paste a save code from a previous audit"):
+        prev_code = st.text_input(
+            "Previous audit save code",
+            key="prev_audit_code",
+            placeholder="Paste your previous save code here",
+        )
+        if st.button("Compare", key="btn_compare") and prev_code:
+            # Temporarily swap state to compute previous results
+            current_answers = st.session_state.answers.copy()
+            current_industry = st.session_state.industry
+            try:
+                padded = prev_code.strip() + "=" * (4 - len(prev_code.strip()) % 4)
+                compressed = base64.urlsafe_b64decode(padded)
+                raw = zlib.decompress(compressed)
+                prev_payload = json.loads(raw)
+                # Temporarily set previous answers to compute results
+                st.session_state.answers = prev_payload.get("a", {})
+                st.session_state.industry = prev_payload.get("i", current_industry)
+                prev_r = compute_results()
+                # Restore current
+                st.session_state.answers = current_answers
+                st.session_state.industry = current_industry
+                if prev_r["overall"] is not None and r["overall"] is not None:
+                    delta = r["overall"] - prev_r["overall"]
+                    direction = "up" if delta > 0 else "down" if delta < 0 else "flat"
+                    color = "var(--accent)" if delta > 0 else "var(--warn)" if delta < 0 else "var(--muted)"
+                    arrow = "+" if delta > 0 else ""
+                    st.markdown(
+                        f'<div class="sa-card"><div class="label">Overall change</div>'
+                        f'<div class="val" style="color:{color}">{arrow}{delta:.1f}</div>'
+                        f'<div style="font-size:0.9rem;color:var(--muted);margin-top:4px">'
+                        f'Previous: {prev_r["overall"]:.1f} &rarr; Current: {r["overall"]:.1f}</div></div>',
+                        unsafe_allow_html=True,
+                    )
+                    # Per-dimension deltas
+                    prev_dim_scores = {d["id"]: d["score"] for d in prev_r["dimensions"]}
+                    for d in r["dimensions"]:
+                        prev_score = prev_dim_scores.get(d["id"])
+                        if d["score"] is not None and prev_score is not None:
+                            dd = d["score"] - prev_score
+                            darrow = "+" if dd > 0 else ""
+                            dcolor = "var(--accent)" if dd > 0 else "var(--warn)" if dd < 0 else "var(--muted)"
+                            st.markdown(
+                                f'<div style="display:flex;justify-content:space-between;padding:6px 0;'
+                                f'border-bottom:1px solid var(--hair);font-size:0.95rem">'
+                                f'<span>{d["name"]}</span>'
+                                f'<span style="color:{dcolor};font-weight:500">{darrow}{dd:.1f}</span></div>',
+                                unsafe_allow_html=True,
+                            )
+                else:
+                    st.warning("Could not compare. The previous audit may not have enough data.")
+            except Exception:
+                st.error("Invalid save code. Please check and try again.")
+                st.session_state.answers = current_answers
+                st.session_state.industry = current_industry
+
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     if st.button("Start a new audit"):
-        for k in ["step", "company", "industry", "revenue", "respondent", "answers", "dim_idx"]:
+        for k in ["step", "company", "industry", "revenue", "respondent", "answers", "dim_idx",
+                  "headcount", "ebitda_margin", "years_in_op", "owner_hours"]:
             if k in st.session_state:
                 del st.session_state[k]
         _init()
