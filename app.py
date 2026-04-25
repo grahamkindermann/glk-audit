@@ -882,10 +882,10 @@ def render_question(q):
     current = st.session_state.answers.get(qid)
     note = ""
     if q["type"] == "likert":
-        options = ["1", "2", "3", "4", "5"]
+        options = ["—", "1", "2", "3", "4", "5"]
         if q.get("allow_na"):
-            options = ["N/A"] + options
-        idx = 0
+            options = ["N/A", "1", "2", "3", "4", "5"]
+        idx = 0  # default to placeholder (unanswered)
         if isinstance(current, (int, float)):
             label = str(int(current))
             if label in options:
@@ -895,7 +895,9 @@ def render_question(q):
         st.markdown(f"**{q['text']}**")
         st.caption("1 = Strongly disagree · 5 = Strongly agree")
         choice = st.radio("Select", options, index=idx, key=f"rad_{qid}", horizontal=True, label_visibility="collapsed")
-        if choice == "N/A":
+        if choice == "—":
+            st.session_state.answers[qid] = None
+        elif choice == "N/A":
             st.session_state.answers[qid] = "N/A"
         else:
             st.session_state.answers[qid] = int(choice)
@@ -925,7 +927,12 @@ def render_question(q):
         )
         if bench:
             st.caption(f"Industry benchmark: 25th {bench['p25']} · median {bench['p50']} · 75th {bench['p75']}")
-        cleaned = val.strip().replace(",", "").replace("$", "").replace("%", "").replace("~", "").replace("k", "000").replace("K", "000")
+        import re as _re
+        cleaned = val.strip().replace(",", "").replace("$", "").replace("%", "").replace("~", "")
+        # Handle k/K suffix: multiply by 1000 instead of string replace
+        _k_match = _re.match(r'^([0-9]*\.?[0-9]+)[kK]$', cleaned)
+        if _k_match:
+            cleaned = str(float(_k_match.group(1)) * 1000)
         if cleaned == "":
             st.session_state.answers[qid] = "N/A"
         else:
@@ -1351,7 +1358,8 @@ def screen_results():
             if st.button("Yes, start fresh", key="confirm_yes"):
                 st.session_state._confirm_new = False
                 for k in ["step", "company", "industry", "revenue", "respondent", "answers", "dim_idx",
-                          "headcount", "ebitda_margin", "years_in_op", "owner_hours"]:
+                          "headcount", "ebitda_margin", "years_in_op", "owner_hours",
+                          "email_captured"]:
                     if k in st.session_state:
                         del st.session_state[k]
                 _init()
