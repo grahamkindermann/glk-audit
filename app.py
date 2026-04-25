@@ -12,6 +12,9 @@ Reads the rubric directly from rubric.py. Deploy as-is on Streamlit Cloud.
 
 import os
 import math
+import json
+import base64
+import zlib
 import requests
 import streamlit as st
 
@@ -317,6 +320,61 @@ def _install_scroll_watcher():
     )
 
 # ---------------------------------------------------------------------------
+# State persistence (save/resume codes + localStorage auto-save)
+# ---------------------------------------------------------------------------
+def _encode_state():
+    """Compress current session state into a short, copyable code."""
+    ss = st.session_state
+    payload = {
+        "s": ss.get("step", "intro"),
+        "c": ss.get("company", ""),
+        "i": ss.get("industry", INDUSTRY_LIST[0]),
+        "r": ss.get("revenue", ""),
+        "p": ss.get("respondent", ""),
+        "d": ss.get("dim_idx", 0),
+        "a": ss.get("answers", {}),
+    }
+    raw = json.dumps(payload, separators=(",", ":")).encode()
+    compressed = zlib.compress(raw, 9)
+    return base64.urlsafe_b64encode(compressed).decode().rstrip("=")
+
+def _decode_state(code):
+    """Decode a resume code and populate session state. Returns True on success."""
+    try:
+        padded = code + "=" * (4 - len(code) % 4)
+        compressed = base64.urlsafe_b64decode(padded)
+        raw = zlib.decompress(compressed)
+        payload = json.loads(raw)
+        ss = st.session_state
+        ss["step"] = payload.get("s", "intro")
+        ss["company"] = payload.get("c", "")
+        ss["industry"] = payload.get("i", INDUSTRY_LIST[0])
+        ss["revenue"] = payload.get("r", "")
+        ss["respondent"] = payload.get("p", "")
+        ss["dim_idx"] = payload.get("d", 0)
+        ss["answers"] = payload.get("a", {})
+        return True
+    except Exception:
+        return False
+
+def _save_to_localstorage():
+    """Inject JS into the parent document that auto-saves the current state
+    to localStorage. Runs silently on every screen render."""
+    code = _encode_state()
+    _components.html(
+        f"""
+        <script>
+        (function(){{
+          try {{
+            window.parent.localStorage.setItem('sa_audit_state', '{code}');
+          }} catch(e) {{}}
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+
+# ---------------------------------------------------------------------------
 # Session state
 # ---------------------------------------------------------------------------
 def _init():
@@ -459,9 +517,9 @@ def compute_results():
         key=lambda t: ((1.0 - t[2]) * float(t[0].get("weight", 1.0))),
         reverse=True,
     )
-    risks = [r for r in risks_ranked if r[2] < 0.6][:6]
-    # Opportunities: same list; in advisory flavor, anything below 0.8 has room
-    opps = [r for r in risks_ranked if 0.4 <= r[2] < 0.85][:6]
+    risks = [r for r in risks_ranked if r[2] < 0.4][:6]
+    # Opportunities: partially in place but room to improve; no overlap with risks
+    opps = [r for r in risks_ranked if 0.4 <= r[2] < 0.75][:6]
     return {
         "overall": overall,
         "band": band,
@@ -511,7 +569,7 @@ def _capture_email(email: str, company: str, band: str, score: float):
 # ---------------------------------------------------------------------------
 def screen_intro():
     mark()
-    st.markdown('<div class="sa-meta">For the company . Thirty to forty minutes . Six dimensions</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sa-meta">For the company . Fifteen to twenty minutes . Six dimensions</div>', unsafe_allow_html=True)
     st.markdown("# An operator's diagnostic of the business itself.")
     st.markdown(
         '<p class="sa-lede">The Structural Audit is the companion to the Structural Advantage Index. '
@@ -534,18 +592,51 @@ This is an honest tool. You will be asked things you do not want to answer. The 
 """)
     if st.button("Begin the audit", use_container_width=False):
         go("context")
+
+    # --- Resume previous audit ---
+    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+    with st.expander("Resume a previous audit"):
+        resume_code = st.text_input(
+            "Paste your save code",
+            key="resume_code_input",
+            placeholder="Paste the code you saved from a previous session",
+        )
+        if st.button("Resume", key="btn_resume"):
+            if resume_code and _decode_state(resume_code.strip()):
+                st.rerun()
+            else:
+                st.error("Invalid code. Please check and try again.")
+        # Auto-detect localStorage (show hint, not auto-restore)
+        _components.html(
+            """
+            <script>
+            (function(){
+              try {
+                var saved = window.parent.localStorage.getItem('sa_audit_state');
+                if (saved) {
+                  var el = window.parent.document.querySelector('[data-testid="stExpander"]');
+                  // Just a visual hint — the user still needs to click Resume
+                }
+              } catch(e) {}
+            })();
+            </script>
+            """,
+            height=0,
+        )
+
     st.markdown(
         "If you have not taken the Index yet, start there. Know your shape as an operator first. "
         "[Open the Index &rarr;](https://structuraladvantagediagnostic.netlify.app/)",
     )
     st.markdown(
-        '<p class="sa-footnote">Your answers stay in this browser session. Nothing is stored on a server. '
-        'If you close the tab, your progress is lost.</p>',
+        '<p class="sa-footnote">Your progress is auto-saved in this browser. If you need to switch devices, '
+        'use the save code shown at the bottom of each section.</p>',
         unsafe_allow_html=True,
     )
 
 def screen_context():
     _install_scroll_watcher()
+    _save_to_localstorage()
     mark()
     st.markdown('<div class="sa-meta">Step one of seven . Company context</div>', unsafe_allow_html=True)
     st.markdown("## Before the questions, three pieces of context.")
@@ -639,6 +730,7 @@ def render_question(q):
 
 def screen_dimension():
     _install_scroll_watcher()
+    _save_to_localstorage()
     mark()
     idx = st.session_state.dim_idx
     dim = DIMENSIONS[idx]
@@ -670,6 +762,11 @@ def screen_dimension():
         label = "Continue" if idx < total - 1 else "See results"
         if st.button(label, key=f"dim_next_{idx}", use_container_width=True):
             advance_dim()
+    # Save code for cross-device resume
+    with st.expander("Save your progress"):
+        code = _encode_state()
+        st.code(code, language=None)
+        st.caption("Copy this code. Paste it on the intro screen to resume from any device.")
 
 def pct_bar(pct):
     pct = max(0.0, min(100.0, pct))
@@ -679,6 +776,7 @@ def pct_bar(pct):
 
 def screen_results():
     _install_scroll_watcher()
+    _save_to_localstorage()
     mark()
     r = compute_results()
     st.markdown('<div class="sa-meta">Results . The structural audit</div>', unsafe_allow_html=True)
@@ -708,7 +806,36 @@ def screen_results():
         unsafe_allow_html=True,
     )
     dim_id_to_idx = {dim["id"]: i for i, dim in enumerate(DIMENSIONS)}
+    industry = st.session_state.industry
+    answers = st.session_state.answers
     for d in r["dimensions"]:
+        # Compute benchmark comparison for numeric questions in this dimension
+        dim_def = DIMENSIONS[dim_id_to_idx[d["id"]]]
+        above, at_or_below, benchmarked_total = 0, 0, 0
+        for q in dim_def["questions"]:
+            if q["type"] in ("number", "percent"):
+                bench = BENCHMARKS.get((industry, q["id"]))
+                ans = answers.get(q["id"])
+                if bench and ans not in (None, "N/A", ""):
+                    try:
+                        val = float(ans)
+                        benchmarked_total += 1
+                        lower = q.get("lower_is_better", False)
+                        if (lower and val <= bench["p50"]) or (not lower and val >= bench["p50"]):
+                            above += 1
+                        else:
+                            at_or_below += 1
+                    except (ValueError, TypeError):
+                        pass
+        bench_line = ""
+        if benchmarked_total > 0:
+            if above == benchmarked_total:
+                bench_line = f'<div style="font-size:0.82rem;color:var(--accent);margin-top:4px">{above} of {benchmarked_total} benchmarked metrics at or above industry median</div>'
+            elif at_or_below == benchmarked_total:
+                bench_line = f'<div style="font-size:0.82rem;color:var(--warn);margin-top:4px">{at_or_below} of {benchmarked_total} benchmarked metrics below industry median</div>'
+            else:
+                bench_line = f'<div style="font-size:0.82rem;color:var(--muted);margin-top:4px">{above} of {benchmarked_total} benchmarked metrics at or above industry median</div>'
+
         if d["score"] is None:
             st.markdown(
                 f'<div class="sa-card"><div class="label">{d["name"]}</div>'
@@ -724,7 +851,8 @@ def screen_results():
             st.markdown(
                 f'<div class="sa-card"><div class="label">{d["name"]}</div>'
                 f'<div class="val">{d["score"]:.1f}<span class="ten">/ 100</span></div>'
-                f'{pct_bar(d["score"])}</div>',
+                f'{pct_bar(d["score"])}'
+                f'{bench_line}</div>',
                 unsafe_allow_html=True,
             )
 
@@ -775,19 +903,8 @@ def screen_results():
 
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
 
-    # CTAs
-    st.markdown("## What to do with this")
-    st.markdown(
-        "The audit is honest but it is not a plan. If the shape of the score surprised you, the next useful step is a "
-        "read-out call. Thirty minutes. The audit in front of us. A pressure-test of the top three risks and the one "
-        "move that would actually change the score by the next quarter."
-    )
-    cal_url = CTA.get(MODE, CTA["lead_magnet"])["primary_url"]
-    st.link_button("Book a 30-min structural review", cal_url, use_container_width=False)
-
-    # --- Email capture (optional, lightweight) ---
-    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
-    st.markdown("### Get the write-up")
+    # --- Email capture (lighter ask, higher conversion — comes first) ---
+    st.markdown("## Get the write-up")
     st.markdown(
         "Leave an email and we will send a short written interpretation of this score — "
         "what the band means, which risks are structural, and one concrete next step. "
@@ -802,6 +919,17 @@ def screen_results():
                 st.warning("Please enter a valid email address.")
     else:
         st.success("Got it. Check your inbox.")
+
+    # --- Call CTA (heavier ask — comes second) ---
+    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+    st.markdown("## What to do with this")
+    st.markdown(
+        "The audit is honest but it is not a plan. If the shape of the score surprised you, the next useful step is a "
+        "read-out call. Thirty minutes. The audit in front of us. A pressure-test of the top three risks and the one "
+        "move that would actually change the score by the next quarter."
+    )
+    cal_url = CTA.get(MODE, CTA["lead_magnet"])["primary_url"]
+    st.link_button("Book a 30-min structural review", cal_url, use_container_width=False)
 
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     st.markdown("### If you have not taken the Index yet")
