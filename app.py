@@ -287,12 +287,9 @@ div[data-testid="stRadio"] label {
 .stProgress > div > div > div > div { background: var(--ink) !important; }
 
 #MainMenu, footer, header[data-testid="stHeader"] { visibility: hidden !important; }
-<<<<<<< Updated upstream
-=======
 [data-testid="manage-app-button"] { display: none !important; }
 .viewerBadge_container__r5tak { display: none !important; }
 [data-testid="stSidebarCollapsedControl"] { display: none !important; }
->>>>>>> Stashed changes
 
 /* --- Button hierarchy: ghost class for secondary actions --- */
 div.stButton.sa-ghost > button {
@@ -363,10 +360,7 @@ div.stButton.sa-link > button:hover * {
   .sa-mark { margin-bottom: 1.5rem; font-size: 12px; }
   .sa-card { padding: 16px 18px; }
   .sa-card .val { font-size: 1.7rem; }
-<<<<<<< Updated upstream
-=======
   .sa-score-hero .val { font-size: 2.4rem; }
->>>>>>> Stashed changes
   .sa-risk, .sa-opp { padding: 12px 14px; }
   div.stButton > button, div.stLinkButton > a {
     padding: 12px 20px !important;
@@ -392,11 +386,8 @@ div.stButton.sa-link > button:hover * {
   .sa-card { padding: 14px 16px; }
   .sa-card .val { font-size: 1.5rem; }
   .sa-card .ten { font-size: 0.8rem; }
-<<<<<<< Updated upstream
-=======
   .sa-score-hero .val { font-size: 2.2rem; }
   .sa-score-hero { padding: 20px 18px; }
->>>>>>> Stashed changes
   .sa-risk, .sa-opp { padding: 10px 12px; }
   .sa-rule { margin: 1.2rem 0; }
   div.stButton > button, div.stLinkButton > a {
@@ -504,11 +495,7 @@ def _encode_state():
     payload = {
         "s": ss.get("step", "intro"),
         "c": ss.get("company", ""),
-<<<<<<< Updated upstream
-        "i": ss.get("industry", INDUSTRY_LIST[0]),
-=======
         "i": ss.get("industry", ""),
->>>>>>> Stashed changes
         "r": ss.get("revenue", ""),
         "p": ss.get("respondent", ""),
         "d": ss.get("dim_idx", 0),
@@ -532,11 +519,7 @@ def _decode_state(code):
         ss = st.session_state
         ss["step"] = payload.get("s", "intro")
         ss["company"] = payload.get("c", "")
-<<<<<<< Updated upstream
-        ss["industry"] = payload.get("i", INDUSTRY_LIST[0])
-=======
         ss["industry"] = payload.get("i", "")
->>>>>>> Stashed changes
         ss["revenue"] = payload.get("r", "")
         ss["respondent"] = payload.get("p", "")
         ss["dim_idx"] = payload.get("d", 0)
@@ -869,11 +852,7 @@ def screen_context():
         index=_ind_idx,
         placeholder="Select your industry",
     )
-<<<<<<< Updated upstream
-    _rev_options = ["$1M to $3M", "$3M to $10M", "$10M to $30M", "$30M+"]
-=======
     _rev_options = ["Under $1M", "$1M to $3M", "$3M to $10M", "$10M to $30M", "$30M+"]
->>>>>>> Stashed changes
     _rev_idx = _rev_options.index(st.session_state.revenue) if st.session_state.revenue in _rev_options else None
     st.session_state.revenue = st.selectbox(
         "Annual revenue band",
@@ -970,9 +949,6 @@ def render_question(q):
             placeholder=placeholder,
         )
         if bench:
-<<<<<<< Updated upstream
-            st.caption(f"Industry benchmark: 25th {bench['p25']} · median {bench['p50']} · 75th {bench['p75']}")
-=======
             _BENCH_UNITS = {
                 "per_q_turnover_pct": "%", "fin_q_ar_over_60_pct": "%",
                 "sw_q_software_spend_pct": "%", "sal_q_monthly_churn_pct": "%",
@@ -985,7 +961,6 @@ def render_question(q):
             _u = _BENCH_UNITS.get(qid, "")
             _fmt = lambda v: f"${v:,.0f}" if qid == "sal_q_cac" else f"{v:g}{_u}"
             st.caption(f"Industry benchmark: 25th: {_fmt(bench['p25'])} · Median: {_fmt(bench['p50'])} · 75th: {_fmt(bench['p75'])}")
->>>>>>> Stashed changes
         import re as _re
         cleaned = val.strip().replace(",", "").replace("$", "").replace("%", "").replace("~", "")
         # Handle k/K suffix: multiply by 1000 instead of string replace
@@ -1013,22 +988,6 @@ def screen_dimension():
     st.markdown(f'<p class="sa-lede">{dim["summary"]}</p>', unsafe_allow_html=True)
     # Progress (consistent 1-8 scale: context=1, dims=2-7)
     st.progress((idx + 2) / (total + 2))
-<<<<<<< Updated upstream
-    # Running tally of answered questions across completed dimensions
-    if idx > 0:
-        answered_so_far = 0
-        total_so_far = 0
-        for prev_dim in DIMENSIONS[:idx]:
-            for pq in prev_dim["questions"]:
-                total_so_far += 1
-                ans = st.session_state.answers.get(pq["id"])
-                if ans not in (None, "N/A", ""):
-                    answered_so_far += 1
-        st.caption(f"{answered_so_far} of {total_so_far} questions answered across {idx} completed dimension{'s' if idx > 1 else ''}.")
-    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
-    num_q = len(dim["questions"])
-    for qi, q in enumerate(dim["questions"], 1):
-=======
     # Running tally + time estimate
     total_all_q = sum(len(d["questions"]) for d in DIMENSIONS)
     answered_so_far = 0
@@ -1058,7 +1017,6 @@ def screen_dimension():
                 unsafe_allow_html=True,
             )
             _last_group = _grp
->>>>>>> Stashed changes
         st.markdown(
             f'<p style="font-size:0.85rem;letter-spacing:0.12em;text-transform:uppercase;'
             f'color:var(--muted);margin:0 0 2px">Question {qi} of {num_q}</p>',
@@ -1191,10 +1149,7 @@ def screen_results():
           <a href="#" data-target="sa-dimensions">Dimensions</a>
           <a href="#" data-target="sa-risks">Risks</a>
           <a href="#" data-target="sa-opportunities">Opportunities</a>
-<<<<<<< Updated upstream
-=======
           <a href="#" data-target="sa-plan">90-Day Plan</a>
->>>>>>> Stashed changes
           <a href="#" data-target="sa-writeup">Get the write-up</a>
           <a href="#" data-target="sa-next">Next step</a>
         </div>
@@ -1213,8 +1168,6 @@ def screen_results():
         """,
         height=32,
     )
-<<<<<<< Updated upstream
-=======
     # --- Radar chart ---
     scored_for_radar = [d for d in r["dimensions"] if d["score"] is not None]
     if len(scored_for_radar) >= 3:
@@ -1279,7 +1232,6 @@ def screen_results():
             height=380,
         )
 
->>>>>>> Stashed changes
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
 
     # Dimensions
@@ -1460,9 +1412,6 @@ def screen_results():
     elif _ec == "soft_fail":
         st.info("We noted your request. If you do not receive the write-up within 24 hours, reach out directly.")
     else:
-<<<<<<< Updated upstream
-        st.success("Got it. Check your inbox.")
-=======
         st.markdown(
             '<div style="background:#E8EAE0;border:1px solid #5A6B3F;padding:16px 20px;margin:0.5rem 0">'
             '<p style="color:#4A5A32;font-weight:600;margin:0 0 4px;font-size:0.95rem">Write-up requested</p>'
@@ -1471,7 +1420,6 @@ def screen_results():
             'covering your top risk, strongest dimension, and one concrete next step.</p></div>',
             unsafe_allow_html=True,
         )
->>>>>>> Stashed changes
 
     # --- Call CTA (heavier ask — comes second) ---
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
@@ -1577,8 +1525,6 @@ def screen_results():
                 st.session_state.answers = current_answers
                 st.session_state.industry = current_industry
 
-<<<<<<< Updated upstream
-=======
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     _components.html(
         """
@@ -1591,7 +1537,6 @@ def screen_results():
         """,
         height=32,
     )
->>>>>>> Stashed changes
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     if st.button("Start a new audit"):
         st.session_state._confirm_new = True
