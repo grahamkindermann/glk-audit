@@ -36,7 +36,7 @@ from rubric import (
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="The Structural Audit . A diagnostic of the company, not the founder",
-    page_icon=None,
+    page_icon="◆",
     layout="centered",
     initial_sidebar_state="collapsed",
 )
@@ -193,8 +193,14 @@ p, li, label, .stMarkdown, [data-testid="stMarkdownContainer"] p {
   margin-bottom: 1rem;
 }
 
-.sa-risk, .sa-opp {
-  border-left: 2px solid var(--accent);
+.sa-risk {
+  border-left: 3px solid var(--warn);
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  background: #FBF8F1;
+}
+.sa-opp {
+  border-left: 3px solid var(--accent);
   padding: 14px 18px;
   margin-bottom: 14px;
   background: #FBF8F1;
@@ -266,6 +272,111 @@ div[data-testid="stRadio"] label {
 .stProgress > div > div > div > div { background: var(--ink) !important; }
 
 #MainMenu, footer, header[data-testid="stHeader"] { visibility: hidden !important; }
+
+/* --- Button hierarchy: ghost class for secondary actions --- */
+div.stButton > button[kind="secondary"],
+div.stButton.sa-ghost > button {
+  background: transparent !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--ink) !important;
+}
+div.stButton.sa-ghost > button * {
+  color: var(--ink) !important;
+}
+div.stButton.sa-ghost > button:hover {
+  background: var(--bone-2) !important;
+  color: var(--ink) !important;
+}
+div.stButton.sa-ghost > button:hover * {
+  color: var(--ink) !important;
+}
+
+/* --- Edit-answers: compact link-style buttons --- */
+div.stButton.sa-link > button {
+  background: transparent !important;
+  color: var(--accent) !important;
+  border: none !important;
+  padding: 4px 0 !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.04em !important;
+  text-decoration: underline !important;
+  text-underline-offset: 3px !important;
+}
+div.stButton.sa-link > button * {
+  color: var(--accent) !important;
+}
+div.stButton.sa-link > button:hover {
+  background: transparent !important;
+  color: var(--accent-2) !important;
+}
+div.stButton.sa-link > button:hover * {
+  color: var(--accent-2) !important;
+}
+
+/* --- Results TOC nav --- */
+.sa-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 1rem 0 0.5rem;
+}
+.sa-toc a {
+  font-family: "Inter", sans-serif;
+  font-size: 0.88rem;
+  color: var(--accent) !important;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+.sa-toc a:hover { text-decoration: underline; }
+
+/* --- Responsive: tablet ≤768px --- */
+@media (max-width: 768px) {
+  section.main > div.block-container {
+    padding-top: 2rem !important;
+    padding-bottom: 3rem !important;
+  }
+  h1 { font-size: 2.1rem !important; }
+  h2 { font-size: 1.45rem !important; margin-top: 1rem !important; }
+  h3 { font-size: 1.15rem !important; }
+  .sa-lede { font-size: 1.12rem !important; }
+  .sa-mark { margin-bottom: 1.5rem; font-size: 12px; }
+  .sa-card { padding: 16px 18px; }
+  .sa-card .val { font-size: 1.7rem; }
+  .sa-risk, .sa-opp { padding: 12px 14px; }
+  div.stButton > button, div.stLinkButton > a {
+    padding: 12px 20px !important;
+    font-size: 14px !important;
+  }
+}
+
+/* --- Responsive: phone ≤480px --- */
+@media (max-width: 480px) {
+  section.main > div.block-container {
+    padding-top: 1.2rem !important;
+    padding-bottom: 2rem !important;
+  }
+  h1 { font-size: 1.7rem !important; line-height: 1.15 !important; }
+  h2 { font-size: 1.25rem !important; }
+  h3 { font-size: 1.05rem !important; }
+  p, li, label, .stMarkdown, [data-testid="stMarkdownContainer"] p {
+    font-size: 0.95rem !important;
+  }
+  .sa-lede { font-size: 1.02rem !important; margin-bottom: 1.2rem !important; }
+  .sa-mark { margin-bottom: 1rem; font-size: 11px; letter-spacing: 0.12em; }
+  .sa-meta { font-size: 11px; }
+  .sa-card { padding: 14px 16px; }
+  .sa-card .val { font-size: 1.5rem; }
+  .sa-card .ten { font-size: 0.8rem; }
+  .sa-risk, .sa-opp { padding: 10px 12px; }
+  .sa-rule { margin: 1.2rem 0; }
+  div.stButton > button, div.stLinkButton > a {
+    padding: 10px 14px !important;
+    font-size: 13px !important;
+  }
+  .sa-toc { gap: 6px 12px; }
+  .sa-toc a { font-size: 0.82rem; }
+}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -333,6 +444,43 @@ def _install_beforeunload():
               e.preventDefault();
               e.returnValue = '';
             });
+          } catch(e) {}
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+def _install_button_classes():
+    """Style Back buttons as ghost and edit-answers buttons as links.
+    Runs once via parent-doc injection; uses a MutationObserver to catch
+    buttons that appear after Streamlit reruns."""
+    _components.html(
+        """
+        <script>
+        (function(){
+          try {
+            var pd = window.parent.document;
+            if (pd._saBtnInstalled) return;
+            pd._saBtnInstalled = true;
+            var tag = pd.createElement('script');
+            tag.textContent = [
+              '(function(){',
+              '  function classify(){',
+              '    document.querySelectorAll("div.stButton > button").forEach(function(b){',
+              '      var t = (b.textContent||"").trim();',
+              '      var p = b.closest("div.stButton");',
+              '      if (!p) return;',
+              '      if (t === "Back") p.classList.add("sa-ghost");',
+              '      if (t.indexOf("Edit ") === 0 || t.indexOf("Complete ") === 0) p.classList.add("sa-link");',
+              '    });',
+              '  }',
+              '  classify();',
+              '  var s = document.querySelector("section.stMain");',
+              '  if (s) new MutationObserver(function(){ classify(); }).observe(s, { childList:true, subtree:true });',
+              '})();'
+            ].join('\\n');
+            pd.body.appendChild(tag);
           } catch(e) {}
         })();
         </script>
@@ -688,6 +836,7 @@ This is an honest tool. You will be asked things you do not want to answer. The 
 def screen_context():
     _install_scroll_watcher()
     _install_beforeunload()
+    _install_button_classes()
     _save_to_localstorage()
     mark()
     st.markdown('<div class="sa-meta">Step one of seven . Company context</div>', unsafe_allow_html=True)
@@ -702,10 +851,13 @@ def screen_context():
         "Industry", options=INDUSTRY_LIST,
         index=INDUSTRY_LIST.index(st.session_state.industry) if st.session_state.industry in INDUSTRY_LIST else 0,
     )
+    _rev_options = ["$1M to $3M", "$3M to $10M", "$10M to $30M", "$30M+"]
+    _rev_idx = _rev_options.index(st.session_state.revenue) if st.session_state.revenue in _rev_options else None
     st.session_state.revenue = st.selectbox(
         "Annual revenue band",
-        options=["", "$1M to $3M", "$3M to $10M", "$10M to $30M", "$30M+"],
-        index=["", "$1M to $3M", "$3M to $10M", "$10M to $30M", "$30M+"].index(st.session_state.revenue) if st.session_state.revenue else 0,
+        options=_rev_options,
+        index=_rev_idx,
+        placeholder="Select a revenue band",
     )
     st.session_state.respondent = st.text_input(
         "Your role (e.g., Founder / CEO, COO, President)",
@@ -780,19 +932,17 @@ def render_question(q):
             st.session_state.answers[qid] = choice
     elif q["type"] in ("number", "percent"):
         bench = BENCHMARKS.get((st.session_state.industry, qid))
-        note = ""
-        if bench:
-            note = f" Industry p25 / p50 / p75: {bench['p25']} / {bench['p50']} / {bench['p75']}."
         placeholder = "e.g. 15" if q["type"] == "percent" else "e.g. 500000"
         if bench:
             placeholder = f"e.g. {bench['p50']}"
         val = st.text_input(
-            q["text"] + (" (numeric value, blank to skip)" if not note else ""),
+            q["text"] + (" (numeric value, blank to skip)" if not bench else ""),
             value="" if current in (None, "N/A") else str(current),
             key=f"num_{qid}",
-            help=note.strip() if note else None,
             placeholder=placeholder,
         )
+        if bench:
+            st.caption(f"Industry benchmark: 25th {bench['p25']} · median {bench['p50']} · 75th {bench['p75']}")
         if val.strip() == "":
             st.session_state.answers[qid] = "N/A"
         else:
@@ -805,6 +955,7 @@ def render_question(q):
 def screen_dimension():
     _install_scroll_watcher()
     _install_beforeunload()
+    _install_button_classes()
     _save_to_localstorage()
     mark()
     idx = st.session_state.dim_idx
@@ -819,14 +970,14 @@ def screen_dimension():
     num_q = len(dim["questions"])
     for qi, q in enumerate(dim["questions"], 1):
         st.markdown(
-            f'<p style="font-size:0.78rem;letter-spacing:0.12em;text-transform:uppercase;'
+            f'<p style="font-size:0.85rem;letter-spacing:0.12em;text-transform:uppercase;'
             f'color:var(--muted);margin:0 0 2px">Question {qi} of {num_q}</p>',
             unsafe_allow_html=True,
         )
         render_question(q)
         st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1, 1, 2])
+    col1, col2 = st.columns(2)
     with col1:
         if st.button("Back", key=f"dim_back_{idx}", use_container_width=True):
             if idx == 0:
@@ -841,7 +992,25 @@ def screen_dimension():
     with st.expander("Save your progress"):
         code = _encode_state()
         st.code(code, language=None)
-        st.caption("Copy this code. Paste it on the intro screen to resume from any device.")
+        _components.html(
+            f"""
+            <style>
+            body {{ margin:0; padding:0; background:transparent; }}
+            button {{
+              background:#14223D; color:#F4EFE6; border:none; padding:8px 18px;
+              font-family:"Inter",sans-serif; font-size:13px; font-weight:500;
+              cursor:pointer; letter-spacing:0.02em;
+            }}
+            button:hover {{ background:#2A3758; }}
+            .ok {{ color:#8B6A3F; font-size:12px; margin-left:8px; font-family:"Inter",sans-serif; }}
+            </style>
+            <button onclick="navigator.clipboard.writeText('{code}').then(function(){{document.getElementById('cp').textContent='Copied.'}})">
+              Copy to clipboard
+            </button><span id="cp" class="ok"></span>
+            """,
+            height=42,
+        )
+        st.caption("Paste this code on the intro screen to resume from any device.")
 
 def pct_bar(pct):
     pct = max(0.0, min(100.0, pct))
@@ -851,6 +1020,7 @@ def pct_bar(pct):
 
 def screen_results():
     _install_scroll_watcher()
+    _install_button_classes()
     _save_to_localstorage()
     mark()
     r = compute_results()
@@ -899,9 +1069,42 @@ def screen_results():
             unsafe_allow_html=True,
         )
 
+    # --- Table of contents (rendered via component iframe so JS works) ---
+    _components.html(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap');
+        body { margin:0; padding:0; background:transparent; }
+        .toc { display:flex; flex-wrap:wrap; gap:6px 18px; font-family:"Inter",sans-serif; }
+        .toc a { font-size:14px; color:#8B6A3F; text-decoration:none; letter-spacing:0.02em; }
+        .toc a:hover { text-decoration:underline; }
+        </style>
+        <div class="toc">
+          <a href="#" data-target="sa-dimensions">Dimensions</a>
+          <a href="#" data-target="sa-risks">Risks</a>
+          <a href="#" data-target="sa-opportunities">Opportunities</a>
+          <a href="#" data-target="sa-writeup">Get the write-up</a>
+          <a href="#" data-target="sa-next">Next step</a>
+        </div>
+        <script>
+        document.querySelectorAll('.toc a').forEach(function(a){
+          a.addEventListener('click', function(e){
+            e.preventDefault();
+            var id = this.getAttribute('data-target');
+            try {
+              var el = window.parent.document.getElementById(id);
+              if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
+            } catch(err) {}
+          });
+        });
+        </script>
+        """,
+        height=32,
+    )
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
 
     # Dimensions
+    st.markdown('<div id="sa-dimensions"></div>', unsafe_allow_html=True)
     st.markdown("## The six dimensions")
     st.markdown(
         '<p class="sa-lede" style="font-size:1.05rem">Any dimension with insufficient answered weight is excluded from the overall score and marked as such.</p>',
@@ -965,6 +1168,7 @@ def screen_results():
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
 
     # Risks
+    st.markdown('<div id="sa-risks"></div>', unsafe_allow_html=True)
     st.markdown("## What is load-bearing right now")
     st.markdown(
         '<p class="sa-lede" style="font-size:1.05rem">These are the answered items carrying the most risk relative to their weight. '
@@ -989,6 +1193,7 @@ def screen_results():
     # Opportunities
     if r["opportunities"]:
         st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+        st.markdown('<div id="sa-opportunities"></div>', unsafe_allow_html=True)
         st.markdown("## Where the compounding is waiting")
         st.markdown(
             '<p class="sa-lede" style="font-size:1.05rem">Items that are partially in place. A focused quarter on a few of these usually moves the overall score more than closing a risk.</p>',
@@ -1010,6 +1215,7 @@ def screen_results():
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
 
     # --- Email capture (lighter ask, higher conversion — comes first) ---
+    st.markdown('<div id="sa-writeup"></div>', unsafe_allow_html=True)
     st.markdown("## Get the write-up")
     st.markdown(
         "Leave an email and we will send a short written interpretation of this score — "
@@ -1028,6 +1234,7 @@ def screen_results():
 
     # --- Call CTA (heavier ask — comes second) ---
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+    st.markdown('<div id="sa-next"></div>', unsafe_allow_html=True)
     st.markdown("## What to do with this")
     st.markdown(
         "The audit is honest but it is not a plan. If the shape of the score surprised you, the next useful step is a "
@@ -1106,12 +1313,24 @@ def screen_results():
 
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     if st.button("Start a new audit"):
-        for k in ["step", "company", "industry", "revenue", "respondent", "answers", "dim_idx",
-                  "headcount", "ebitda_margin", "years_in_op", "owner_hours"]:
-            if k in st.session_state:
-                del st.session_state[k]
-        _init()
+        st.session_state._confirm_new = True
         st.rerun()
+    if st.session_state.get("_confirm_new"):
+        st.warning("This will clear all your answers. Are you sure?")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Yes, start fresh", key="confirm_yes"):
+                st.session_state._confirm_new = False
+                for k in ["step", "company", "industry", "revenue", "respondent", "answers", "dim_idx",
+                          "headcount", "ebitda_margin", "years_in_op", "owner_hours"]:
+                    if k in st.session_state:
+                        del st.session_state[k]
+                _init()
+                st.rerun()
+        with c2:
+            if st.button("Cancel", key="confirm_no"):
+                st.session_state._confirm_new = False
+                st.rerun()
 
 # ---------------------------------------------------------------------------
 # Router
