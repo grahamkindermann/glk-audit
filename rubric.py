@@ -173,10 +173,12 @@ BANDS = [
     ("durable",    91, 101, "Durable"),
 ]
 
-# If more than this fraction of a dimension's weight is answered N/A, the
-# dimension is marked INSUFFICIENT_DATA_LABEL and excluded from the overall
-# weighted average (remaining dimension weights are re-normalized).
-INSUFFICIENT_DATA_THRESHOLD = 0.40
+# Minimum fraction of a dimension's total weight that must be answered for
+# the dimension to receive a score. If less than this fraction is answered,
+# the dimension is marked INSUFFICIENT_DATA_LABEL and excluded from the
+# overall weighted average. E.g. 0.60 means at least 60% must be answered.
+MINIMUM_ANSWERED_FRACTION = 0.60
+INSUFFICIENT_DATA_THRESHOLD = 0.40  # kept for backward compat; not used in app.py
 INSUFFICIENT_DATA_LABEL = "Insufficient Data"
 
 # ---------------------------------------------------------------------------
@@ -195,7 +197,7 @@ BAND_NARRATIVE = {
     ),
     "functional": (
         "The business has real structural muscle, but the remaining gaps are load-bearing. "
-        "Closing two or three of them would move the business into genuinely durable territory."
+        "Closing two or three of them would move the business into durable territory."
     ),
     "strong": (
         "The business is well-run across most dimensions. "
@@ -862,6 +864,8 @@ FIRMOGRAPHICS = [
 INDUSTRY_LIST = [
     "SaaS", "Professional Services", "Manufacturing",
     "Retail / E-commerce", "Healthcare", "Financial Services",
+    "Construction / Trades", "Real Estate", "Logistics / Distribution",
+    "Hospitality / Food Service", "Education / Training", "Other",
 ]
 
 BENCHMARKS = {
@@ -947,4 +951,89 @@ BENCHMARKS = {
     ("Retail / E-commerce", "ops_q_mttr_hours"):     {"p25": 2,  "p50": 8,  "p75": 24},
     ("Healthcare", "ops_q_mttr_hours"):              {"p25": 4,  "p50": 12, "p75": 36},
     ("Financial Services", "ops_q_mttr_hours"):      {"p25": 2,  "p50": 8,  "p75": 24},
+
+    # --- Cross-industry defaults for new industries ---
+    # These use approximate medians across all sectors above.
+    # Personnel
+    ("Construction / Trades", "per_q_turnover_pct"):  {"p25": 12, "p50": 20, "p75": 32},
+    ("Real Estate", "per_q_turnover_pct"):            {"p25": 8,  "p50": 15, "p75": 25},
+    ("Logistics / Distribution", "per_q_turnover_pct"):{"p25":12, "p50": 22, "p75": 35},
+    ("Hospitality / Food Service", "per_q_turnover_pct"):{"p25":18,"p50": 30, "p75": 50},
+    ("Education / Training", "per_q_turnover_pct"):   {"p25": 8,  "p50": 14, "p75": 24},
+    ("Other", "per_q_turnover_pct"):                  {"p25": 10, "p50": 18, "p75": 28},
+
+    ("Construction / Trades", "per_q_days_to_fill"):  {"p25": 20, "p50": 35, "p75": 55},
+    ("Real Estate", "per_q_days_to_fill"):            {"p25": 20, "p50": 38, "p75": 60},
+    ("Logistics / Distribution", "per_q_days_to_fill"):{"p25":15, "p50": 30, "p75": 50},
+    ("Hospitality / Food Service", "per_q_days_to_fill"):{"p25":10,"p50": 22, "p75": 40},
+    ("Education / Training", "per_q_days_to_fill"):   {"p25": 25, "p50": 42, "p75": 65},
+    ("Other", "per_q_days_to_fill"):                  {"p25": 22, "p50": 38, "p75": 60},
+
+    # Accounting & Finance
+    ("Construction / Trades", "fin_q_days_to_close"):  {"p25": 7,  "p50": 12, "p75": 20},
+    ("Real Estate", "fin_q_days_to_close"):            {"p25": 5,  "p50": 10, "p75": 18},
+    ("Logistics / Distribution", "fin_q_days_to_close"):{"p25": 6, "p50": 10, "p75": 18},
+    ("Hospitality / Food Service", "fin_q_days_to_close"):{"p25":5,"p50": 8,  "p75": 15},
+    ("Education / Training", "fin_q_days_to_close"):   {"p25": 5,  "p50": 10, "p75": 18},
+    ("Other", "fin_q_days_to_close"):                  {"p25": 6,  "p50": 10, "p75": 17},
+
+    ("Construction / Trades", "fin_q_ar_over_60_pct"):  {"p25": 8, "p50": 15, "p75": 28},
+    ("Real Estate", "fin_q_ar_over_60_pct"):            {"p25": 5, "p50": 10, "p75": 20},
+    ("Logistics / Distribution", "fin_q_ar_over_60_pct"):{"p25":5, "p50": 12, "p75": 22},
+    ("Hospitality / Food Service", "fin_q_ar_over_60_pct"):{"p25":2,"p50": 5, "p75": 12},
+    ("Education / Training", "fin_q_ar_over_60_pct"):   {"p25": 3, "p50": 8,  "p75": 16},
+    ("Other", "fin_q_ar_over_60_pct"):                  {"p25": 4, "p50": 10, "p75": 20},
+
+    # Software Stack
+    ("Construction / Trades", "sw_q_num_saas_tools"):  {"p25": 6,  "p50": 12, "p75": 25},
+    ("Real Estate", "sw_q_num_saas_tools"):            {"p25": 8,  "p50": 18, "p75": 35},
+    ("Logistics / Distribution", "sw_q_num_saas_tools"):{"p25": 8, "p50": 18, "p75": 35},
+    ("Hospitality / Food Service", "sw_q_num_saas_tools"):{"p25":6,"p50": 12, "p75": 25},
+    ("Education / Training", "sw_q_num_saas_tools"):   {"p25": 8,  "p50": 18, "p75": 35},
+    ("Other", "sw_q_num_saas_tools"):                  {"p25": 10, "p50": 20, "p75": 38},
+
+    ("Construction / Trades", "sw_q_software_spend_pct"):  {"p25": 1, "p50": 3,  "p75": 6},
+    ("Real Estate", "sw_q_software_spend_pct"):            {"p25": 2, "p50": 5,  "p75": 10},
+    ("Logistics / Distribution", "sw_q_software_spend_pct"):{"p25":2,"p50": 4,  "p75": 8},
+    ("Hospitality / Food Service", "sw_q_software_spend_pct"):{"p25":1,"p50":3, "p75": 6},
+    ("Education / Training", "sw_q_software_spend_pct"):   {"p25": 2, "p50": 5, "p75": 10},
+    ("Other", "sw_q_software_spend_pct"):                  {"p25": 2, "p50": 5, "p75": 10},
+
+    # AI Readiness
+    ("Construction / Trades", "ai_q_num_ai_workflows"):  {"p25": 0, "p50": 1,  "p75": 3},
+    ("Real Estate", "ai_q_num_ai_workflows"):            {"p25": 0, "p50": 2,  "p75": 5},
+    ("Logistics / Distribution", "ai_q_num_ai_workflows"):{"p25":0, "p50": 2,  "p75": 5},
+    ("Hospitality / Food Service", "ai_q_num_ai_workflows"):{"p25":0,"p50":1,  "p75": 3},
+    ("Education / Training", "ai_q_num_ai_workflows"):   {"p25": 0, "p50": 2,  "p75": 4},
+    ("Other", "ai_q_num_ai_workflows"):                  {"p25": 1, "p50": 3,  "p75": 6},
+
+    # Sales & Marketing
+    ("Construction / Trades", "sal_q_cac"):            {"p25": 200,"p50": 500, "p75": 1200},
+    ("Real Estate", "sal_q_cac"):                      {"p25": 300,"p50": 700, "p75": 1800},
+    ("Logistics / Distribution", "sal_q_cac"):         {"p25": 150,"p50": 400, "p75": 1000},
+    ("Hospitality / Food Service", "sal_q_cac"):       {"p25": 30, "p50": 80,  "p75": 200},
+    ("Education / Training", "sal_q_cac"):             {"p25": 200,"p50": 500, "p75": 1200},
+    ("Other", "sal_q_cac"):                            {"p25": 200,"p50": 550, "p75": 1400},
+
+    ("Construction / Trades", "sal_q_monthly_churn_pct"):  {"p25": 0.5,"p50":1.5,"p75":3.0},
+    ("Real Estate", "sal_q_monthly_churn_pct"):            {"p25": 0.5,"p50":1.5,"p75":3.0},
+    ("Logistics / Distribution", "sal_q_monthly_churn_pct"):{"p25":0.5,"p50":1.0,"p75":2.5},
+    ("Hospitality / Food Service", "sal_q_monthly_churn_pct"):{"p25":2.0,"p50":4.0,"p75":7.0},
+    ("Education / Training", "sal_q_monthly_churn_pct"):   {"p25": 1.0,"p50":2.0,"p75":4.0},
+    ("Other", "sal_q_monthly_churn_pct"):                  {"p25": 1.0,"p50":2.5,"p75":4.5},
+
+    # Operations
+    ("Construction / Trades", "ops_q_on_time_delivery_pct"):  {"p25": 85,"p50": 92, "p75": 97},
+    ("Real Estate", "ops_q_on_time_delivery_pct"):            {"p25": 88,"p50": 94, "p75": 98},
+    ("Logistics / Distribution", "ops_q_on_time_delivery_pct"):{"p25":90,"p50":95, "p75":98},
+    ("Hospitality / Food Service", "ops_q_on_time_delivery_pct"):{"p25":85,"p50":92,"p75":97},
+    ("Education / Training", "ops_q_on_time_delivery_pct"):   {"p25": 90,"p50": 95, "p75": 98},
+    ("Other", "ops_q_on_time_delivery_pct"):                  {"p25": 89,"p50": 94, "p75": 98},
+
+    ("Construction / Trades", "ops_q_mttr_hours"):    {"p25": 4,  "p50": 16, "p75": 48},
+    ("Real Estate", "ops_q_mttr_hours"):              {"p25": 4,  "p50": 12, "p75": 36},
+    ("Logistics / Distribution", "ops_q_mttr_hours"): {"p25": 2,  "p50": 8,  "p75": 24},
+    ("Hospitality / Food Service", "ops_q_mttr_hours"):{"p25": 1, "p50": 4,  "p75": 12},
+    ("Education / Training", "ops_q_mttr_hours"):     {"p25": 4,  "p50": 12, "p75": 36},
+    ("Other", "ops_q_mttr_hours"):                    {"p25": 3,  "p50": 10, "p75": 30},
 }

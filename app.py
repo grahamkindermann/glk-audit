@@ -24,7 +24,7 @@ from rubric import (
     BAND_NARRATIVE,
     BENCHMARKS,
     INDUSTRY_LIST,
-    INSUFFICIENT_DATA_THRESHOLD,
+    MINIMUM_ANSWERED_FRACTION,
     INSUFFICIENT_DATA_LABEL,
     BRAND,
     CTA,
@@ -43,7 +43,7 @@ st.set_page_config(
 
 # Social / OG meta tags (body-level; Streamlit doesn't allow <head> injection)
 _SOCIAL_META = """
-<meta property="og:title" content="The Structural Audit — A diagnostic of the company, not the founder" />
+<meta property="og:title" content="The Structural Audit: A diagnostic of the company, not the founder" />
 <meta property="og:description" content="Fifty questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://structural-audit.streamlit.app/" />
@@ -387,22 +387,16 @@ st.markdown(CSS, unsafe_allow_html=True)
 # reset its scrollTop.
 import streamlit.components.v1 as _components
 
-def _install_scroll_watcher():
-    """Inject a persistent scroll-to-top watcher into the parent Streamlit
-    document.  Streamlit patches the DOM via *attribute* mutations (not
-    childList), so we observe attributes+subtree and compare the page text
-    to detect real page transitions vs. minor widget updates."""
-    _components.html(
-        """
-        <script>
-        (function(){
-          try {
-            var pd = window.parent.document;
-            if (pd._saScrollInstalled) return;
+def _install_parent_js(scroll=True, beforeunload=True, buttons=True):
+    """Install all parent-document JS helpers in a single iframe.
+    Each feature is guarded by its own flag so it only installs once."""
+    parts = []
+    if scroll:
+        parts.append("""
+          if (!pd._saScrollInstalled) {
             pd._saScrollInstalled = true;
-
-            var tag = pd.createElement('script');
-            tag.textContent = [
+            var stag = pd.createElement('script');
+            stag.textContent = [
               '(function(){',
               '  var s = document.querySelector("section.stMain");',
               '  if (!s) return;',
@@ -421,49 +415,23 @@ def _install_scroll_watcher():
               '  }).observe(s, { attributes: true, subtree: true });',
               '})();'
             ].join('\\n');
-            pd.body.appendChild(tag);
-          } catch(e) {}
-        })();
-        </script>
-        """,
-        height=0,
-    )
-
-def _install_beforeunload():
-    """Warn users before they close the tab mid-audit."""
-    _components.html(
-        """
-        <script>
-        (function(){
-          try {
-            var pd = window.parent;
-            if (pd._saUnloadInstalled) return;
-            pd._saUnloadInstalled = true;
-            pd.addEventListener('beforeunload', function(e) {
+            pd.body.appendChild(stag);
+          }""")
+    if beforeunload:
+        parts.append("""
+          if (!pw._saUnloadInstalled) {
+            pw._saUnloadInstalled = true;
+            pw.addEventListener('beforeunload', function(e) {
               e.preventDefault();
               e.returnValue = '';
             });
-          } catch(e) {}
-        })();
-        </script>
-        """,
-        height=0,
-    )
-
-def _install_button_classes():
-    """Style Back buttons as ghost and edit-answers buttons as links.
-    Runs once via parent-doc injection; uses a MutationObserver to catch
-    buttons that appear after Streamlit reruns."""
-    _components.html(
-        """
-        <script>
-        (function(){
-          try {
-            var pd = window.parent.document;
-            if (pd._saBtnInstalled) return;
+          }""")
+    if buttons:
+        parts.append("""
+          if (!pd._saBtnInstalled) {
             pd._saBtnInstalled = true;
-            var tag = pd.createElement('script');
-            tag.textContent = [
+            var btag = pd.createElement('script');
+            btag.textContent = [
               '(function(){',
               '  function classify(){',
               '    document.querySelectorAll("div.stButton > button").forEach(function(b){',
@@ -471,7 +439,7 @@ def _install_button_classes():
               '      var p = b.closest("div.stButton");',
               '      if (!p) return;',
               '      if (t === "Back") p.classList.add("sa-ghost");',
-              '      if (t.indexOf("Edit ") === 0 || t.indexOf("Complete ") === 0) p.classList.add("sa-link");',
+              '      if (t.indexOf("Edit ") === 0 || t.indexOf("Complete ") === 0 || t.indexOf("Skip this") === 0) p.classList.add("sa-link");',
               '    });',
               '  }',
               '  classify();',
@@ -479,9 +447,19 @@ def _install_button_classes():
               '  if (s) new MutationObserver(function(){ classify(); }).observe(s, { childList:true, subtree:true });',
               '})();'
             ].join('\\n');
-            pd.body.appendChild(tag);
-          } catch(e) {}
-        })();
+            pd.body.appendChild(btag);
+          }""")
+    js_body = "\n".join(parts)
+    _components.html(
+        f"""
+        <script>
+        (function(){{
+          try {{
+            var pw = window.parent;
+            var pd = pw.document;
+            {js_body}
+          }} catch(e) {{}}
+        }})();
         </script>
         """,
         height=0,
@@ -667,7 +645,7 @@ def compute_results():
                 answered_weight += w
                 weighted_sum += w * score
                 scored_q.append((q, dim, score))
-        if total_weight == 0 or answered_weight / total_weight < (1.0 - INSUFFICIENT_DATA_THRESHOLD):
+        if total_weight == 0 or answered_weight / total_weight < MINIMUM_ANSWERED_FRACTION:
             dim_results.append({
                 "id": dim["id"], "name": dim["name"],
                 "weight": dim["weight"], "score": None,
@@ -731,17 +709,19 @@ def _capture_email(email: str, company: str, band: str, score: float):
             },
             timeout=8,
         )
-        # Fire the event for the drip sequence
-        requests.post(
-            "https://app.loops.so/api/v1/events/send",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"email": email, "eventName": "audit_completed_anonymous"},
-            timeout=8,
-        )
-        st.session_state.email_captured = True
+        if resp.status_code < 300:
+            # Fire the event for the drip sequence
+            requests.post(
+                "https://app.loops.so/api/v1/events/send",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"email": email, "eventName": "audit_completed_anonymous"},
+                timeout=8,
+            )
+            st.session_state.email_captured = True
+        else:
+            st.session_state.email_captured = "soft_fail"
     except Exception:
-        # Fail silently — don't let email capture break the results page
-        st.session_state.email_captured = True
+        st.session_state.email_captured = "soft_fail"
 
 
 # ---------------------------------------------------------------------------
@@ -824,7 +804,7 @@ This is an honest tool. You will be asked things you do not want to answer. The 
 
     st.markdown(
         "If you have not taken the Index yet, start there. Know your shape as an operator first. "
-        "[Open the Index &rarr;](https://structuraladvantagediagnostic.netlify.app/)",
+        "[Open the Index &rarr;](https://structuraladvantageindex.netlify.app/)",
     )
     st.markdown(
         '<p class="sa-footnote">Your progress is auto-saved in this browser. If you need to switch devices, '
@@ -833,18 +813,17 @@ This is an honest tool. You will be asked things you do not want to answer. The 
     )
 
 def screen_context():
-    _install_scroll_watcher()
-    _install_beforeunload()
-    _install_button_classes()
+    _install_parent_js(scroll=True, beforeunload=True, buttons=True)
     _save_to_localstorage()
     mark()
-    st.markdown('<div class="sa-meta">Step one of seven . Company context</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sa-meta">Step 1 of 8 . Company context</div>', unsafe_allow_html=True)
     st.markdown("## Before the questions, a few pieces of context.")
     st.markdown(
         '<p class="sa-lede">The quantitative questions are scored against industry benchmarks. '
         'Telling us the industry sharpens the result. If none of the options fit cleanly, choose the closest.</p>',
         unsafe_allow_html=True,
     )
+    st.progress(1 / 8)
     st.session_state.company = st.text_input("Company name", value=st.session_state.company)
     st.session_state.industry = st.selectbox(
         "Industry", options=INDUSTRY_LIST,
@@ -862,8 +841,9 @@ def screen_context():
         "Your role (e.g., Founder / CEO, COO, President)",
         value=st.session_state.respondent,
     )
-    # Optional firmographics — not scored, but useful for context and future reporting
-    with st.expander("Optional: additional company details"):
+    # Optional firmographics. Auto-expand if any field is already filled (from resume).
+    _has_firmographics = any(st.session_state.get(k) for k in ("headcount", "ebitda_margin", "years_in_op", "owner_hours"))
+    with st.expander("Optional: additional company details", expanded=_has_firmographics):
         st.session_state.headcount = st.text_input(
             "Full-time headcount",
             value=st.session_state.headcount,
@@ -902,20 +882,23 @@ def render_question(q):
     current = st.session_state.answers.get(qid)
     note = ""
     if q["type"] == "likert":
-        options = ["1 . Strongly disagree", "2 . Disagree", "3 . Neutral", "4 . Agree", "5 . Strongly agree"]
+        options = ["1", "2", "3", "4", "5"]
         if q.get("allow_na"):
             options = ["N/A"] + options
         idx = 0
         if isinstance(current, (int, float)):
-            label = [o for o in options if o.startswith(str(int(current)) + " ")]
-            if label: idx = options.index(label[0])
+            label = str(int(current))
+            if label in options:
+                idx = options.index(label)
         elif current == "N/A":
             idx = 0 if "N/A" in options else 0
-        choice = st.radio(q["text"], options, index=idx, key=f"rad_{qid}", horizontal=False)
+        st.markdown(f"**{q['text']}**")
+        st.caption("1 = Strongly disagree · 5 = Strongly agree")
+        choice = st.radio("Select", options, index=idx, key=f"rad_{qid}", horizontal=True, label_visibility="collapsed")
         if choice == "N/A":
             st.session_state.answers[qid] = "N/A"
         else:
-            st.session_state.answers[qid] = int(choice.split(" ")[0])
+            st.session_state.answers[qid] = int(choice)
     elif q["type"] == "yesno":
         options = ["Skip", "Yes", "No"]
         if q.get("allow_na"):
@@ -942,19 +925,18 @@ def render_question(q):
         )
         if bench:
             st.caption(f"Industry benchmark: 25th {bench['p25']} · median {bench['p50']} · 75th {bench['p75']}")
-        if val.strip() == "":
+        cleaned = val.strip().replace(",", "").replace("$", "").replace("%", "").replace("~", "").replace("k", "000").replace("K", "000")
+        if cleaned == "":
             st.session_state.answers[qid] = "N/A"
         else:
             try:
-                st.session_state.answers[qid] = float(val)
+                st.session_state.answers[qid] = float(cleaned)
             except ValueError:
                 st.session_state.answers[qid] = "N/A"
-                st.caption("Not a number. This question will be skipped.")
+                st.caption("Could not parse as a number. Enter a plain numeric value (e.g. 15, 500000). This question will be skipped.")
 
 def screen_dimension():
-    _install_scroll_watcher()
-    _install_beforeunload()
-    _install_button_classes()
+    _install_parent_js(scroll=True, beforeunload=True, buttons=True)
     _save_to_localstorage()
     mark()
     idx = st.session_state.dim_idx
@@ -963,8 +945,19 @@ def screen_dimension():
     st.markdown(f'<div class="sa-meta">Step {idx + 2} of {total + 2} . Dimension {idx + 1} of {total}</div>', unsafe_allow_html=True)
     st.markdown(f"## {dim['name']}")
     st.markdown(f'<p class="sa-lede">{dim["summary"]}</p>', unsafe_allow_html=True)
-    # Progress
-    st.progress((idx + 1) / total)
+    # Progress (consistent 1-8 scale: context=1, dims=2-7)
+    st.progress((idx + 2) / (total + 2))
+    # Running tally of answered questions across completed dimensions
+    if idx > 0:
+        answered_so_far = 0
+        total_so_far = 0
+        for prev_dim in DIMENSIONS[:idx]:
+            for pq in prev_dim["questions"]:
+                total_so_far += 1
+                ans = st.session_state.answers.get(pq["id"])
+                if ans not in (None, "N/A", ""):
+                    answered_so_far += 1
+        st.caption(f"{answered_so_far} of {total_so_far} questions answered across {idx} completed dimension{'s' if idx > 1 else ''}.")
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     num_q = len(dim["questions"])
     for qi, q in enumerate(dim["questions"], 1):
@@ -976,6 +969,11 @@ def screen_dimension():
         render_question(q)
         st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+    # Skip dimension (clears all answers for this dimension so it shows as Insufficient Data)
+    if st.button("Skip this dimension", key=f"dim_skip_{idx}"):
+        for q in dim["questions"]:
+            st.session_state.answers[q["id"]] = "N/A"
+        advance_dim()
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Back", key=f"dim_back_{idx}", use_container_width=True):
@@ -1018,8 +1016,7 @@ def pct_bar(pct):
     )
 
 def screen_results():
-    _install_scroll_watcher()
-    _install_button_classes()
+    _install_parent_js(scroll=True, beforeunload=False, buttons=True)
     _save_to_localstorage()
     mark()
     r = compute_results()
@@ -1072,9 +1069,8 @@ def screen_results():
     _components.html(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap');
         body { margin:0; padding:0; background:transparent; }
-        .toc { display:flex; flex-wrap:wrap; gap:6px 18px; font-family:"Inter",sans-serif; }
+        .toc { display:flex; flex-wrap:wrap; gap:6px 18px; font-family:"Inter",system-ui,sans-serif; }
         .toc a { font-size:14px; color:#8B6A3F; text-decoration:none; letter-spacing:0.02em; }
         .toc a:hover { text-decoration:underline; }
         </style>
@@ -1213,21 +1209,30 @@ def screen_results():
 
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
 
-    # --- Email capture (lighter ask, higher conversion — comes first) ---
+    # --- Email capture (lighter ask, higher conversion) ---
     st.markdown('<div id="sa-writeup"></div>', unsafe_allow_html=True)
     st.markdown("## Get the write-up")
     st.markdown(
-        "Leave an email and we will send a short written interpretation of this score — "
-        "what the band means, which risks are structural, and one concrete next step. "
+        "Leave an email and we will send a short written interpretation of this score. "
+        "What the band means, which risks are structural, and one concrete next step. "
         "You will get the write-up and a few follow-up notes. That is it."
     )
-    if not st.session_state.get("email_captured"):
+    st.markdown(
+        '<p style="font-size:0.88rem;color:var(--accent);margin:0 0 8px">'
+        'The write-up covers your top risk, your strongest dimension, and the single move most likely to shift the score next quarter.</p>',
+        unsafe_allow_html=True,
+    )
+    _ec = st.session_state.get("email_captured")
+    if not _ec:
         email_val = st.text_input("Email address", key="capture_email", placeholder="you@company.com")
         if st.button("Send me the write-up", key="btn_capture"):
             if email_val and "@" in email_val and "." in email_val:
                 _capture_email(email_val, company, band_label, r["overall"])
+                st.rerun()
             else:
                 st.warning("Please enter a valid email address.")
+    elif _ec == "soft_fail":
+        st.info("We noted your request. If you do not receive the write-up within 24 hours, reach out directly.")
     else:
         st.success("Got it. Check your inbox.")
 
@@ -1248,7 +1253,32 @@ def screen_results():
     st.markdown(
         "The Structural Advantage Index is the personal companion to this audit. Eleven minutes. An operator archetype. "
         "The shape you bring to the work, named. Most operators find the two read differently when held side by side. "
-        "[Open the Index &rarr;](https://structuraladvantagediagnostic.netlify.app/)"
+        "[Open the Index &rarr;](https://structuraladvantageindex.netlify.app/)"
+    )
+
+    # --- Save code (visible, not buried) ---
+    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+    st.markdown("### Save your results")
+    st.markdown("Copy this code to resume your audit from any device, or to compare against a future audit.")
+    _results_code = _encode_state()
+    st.code(_results_code, language=None)
+    _components.html(
+        f"""
+        <style>
+        body {{ margin:0; padding:0; background:transparent; }}
+        button {{
+          background:#14223D; color:#F4EFE6; border:none; padding:8px 18px;
+          font-family:"Inter",system-ui,sans-serif; font-size:13px; font-weight:500;
+          cursor:pointer; letter-spacing:0.02em;
+        }}
+        button:hover {{ background:#2A3758; }}
+        .ok {{ color:#8B6A3F; font-size:12px; margin-left:8px; font-family:"Inter",system-ui,sans-serif; }}
+        </style>
+        <button onclick="navigator.clipboard.writeText('{_results_code}').then(function(){{document.getElementById('rcp').textContent='Copied.'}})">
+          Copy to clipboard
+        </button><span id="rcp" class="ok"></span>
+        """,
+        height=42,
     )
 
     # --- Historical comparison ---
