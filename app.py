@@ -168,6 +168,15 @@ p, li, label, .stMarkdown, [data-testid="stMarkdownContainer"] p {
 }
 .sa-card .ten { font-size: 0.9rem; color: var(--muted); margin-left: 6px; }
 
+.sa-score-hero {
+  background: var(--ink) !important;
+  border-color: var(--ink) !important;
+  padding: 28px 30px;
+}
+.sa-score-hero .label { color: var(--bone-2) !important; }
+.sa-score-hero .val { color: var(--bone) !important; font-size: 2.8rem; }
+.sa-score-hero .ten { color: var(--bone-2) !important; }
+
 .sa-bar-track {
   background: var(--hair);
   height: 6px;
@@ -184,14 +193,20 @@ p, li, label, .stMarkdown, [data-testid="stMarkdownContainer"] p {
 
 .sa-band {
   display: inline-block;
-  padding: 4px 10px;
+  padding: 6px 14px;
   border: 1px solid var(--ink);
   font-size: 12px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink);
   margin-bottom: 1rem;
+  font-weight: 600;
 }
+.sa-band--critical { background: #F2DDD9; border-color: var(--warn); color: var(--warn); }
+.sa-band--fragile  { background: #F5EDDF; border-color: #B8872E; color: #8B6A2F; }
+.sa-band--functional { background: #E8EAE0; border-color: #5A6B3F; color: #4A5A32; }
+.sa-band--strong   { background: #D9E6E0; border-color: #2E6B5A; color: #2E6B5A; }
+.sa-band--durable  { background: #D5E0EC; border-color: var(--ink); color: var(--ink); }
 
 .sa-risk {
   border-left: 3px solid var(--warn);
@@ -272,6 +287,12 @@ div[data-testid="stRadio"] label {
 .stProgress > div > div > div > div { background: var(--ink) !important; }
 
 #MainMenu, footer, header[data-testid="stHeader"] { visibility: hidden !important; }
+<<<<<<< Updated upstream
+=======
+[data-testid="manage-app-button"] { display: none !important; }
+.viewerBadge_container__r5tak { display: none !important; }
+[data-testid="stSidebarCollapsedControl"] { display: none !important; }
+>>>>>>> Stashed changes
 
 /* --- Button hierarchy: ghost class for secondary actions --- */
 div.stButton.sa-ghost > button {
@@ -342,6 +363,10 @@ div.stButton.sa-link > button:hover * {
   .sa-mark { margin-bottom: 1.5rem; font-size: 12px; }
   .sa-card { padding: 16px 18px; }
   .sa-card .val { font-size: 1.7rem; }
+<<<<<<< Updated upstream
+=======
+  .sa-score-hero .val { font-size: 2.4rem; }
+>>>>>>> Stashed changes
   .sa-risk, .sa-opp { padding: 12px 14px; }
   div.stButton > button, div.stLinkButton > a {
     padding: 12px 20px !important;
@@ -367,6 +392,11 @@ div.stButton.sa-link > button:hover * {
   .sa-card { padding: 14px 16px; }
   .sa-card .val { font-size: 1.5rem; }
   .sa-card .ten { font-size: 0.8rem; }
+<<<<<<< Updated upstream
+=======
+  .sa-score-hero .val { font-size: 2.2rem; }
+  .sa-score-hero { padding: 20px 18px; }
+>>>>>>> Stashed changes
   .sa-risk, .sa-opp { padding: 10px 12px; }
   .sa-rule { margin: 1.2rem 0; }
   div.stButton > button, div.stLinkButton > a {
@@ -474,7 +504,11 @@ def _encode_state():
     payload = {
         "s": ss.get("step", "intro"),
         "c": ss.get("company", ""),
+<<<<<<< Updated upstream
         "i": ss.get("industry", INDUSTRY_LIST[0]),
+=======
+        "i": ss.get("industry", ""),
+>>>>>>> Stashed changes
         "r": ss.get("revenue", ""),
         "p": ss.get("respondent", ""),
         "d": ss.get("dim_idx", 0),
@@ -498,7 +532,11 @@ def _decode_state(code):
         ss = st.session_state
         ss["step"] = payload.get("s", "intro")
         ss["company"] = payload.get("c", "")
+<<<<<<< Updated upstream
         ss["industry"] = payload.get("i", INDUSTRY_LIST[0])
+=======
+        ss["industry"] = payload.get("i", "")
+>>>>>>> Stashed changes
         ss["revenue"] = payload.get("r", "")
         ss["respondent"] = payload.get("p", "")
         ss["dim_idx"] = payload.get("d", 0)
@@ -535,7 +573,7 @@ def _init():
     ss = st.session_state
     ss.setdefault("step", "intro")
     ss.setdefault("company", "")
-    ss.setdefault("industry", INDUSTRY_LIST[0])
+    ss.setdefault("industry", "")
     ss.setdefault("revenue", "")
     ss.setdefault("respondent", "")
     ss.setdefault("answers", {})
@@ -825,11 +863,17 @@ def screen_context():
     )
     st.progress(1 / 8)
     st.session_state.company = st.text_input("Company name", value=st.session_state.company)
+    _ind_idx = INDUSTRY_LIST.index(st.session_state.industry) if st.session_state.industry in INDUSTRY_LIST else None
     st.session_state.industry = st.selectbox(
         "Industry", options=INDUSTRY_LIST,
-        index=INDUSTRY_LIST.index(st.session_state.industry) if st.session_state.industry in INDUSTRY_LIST else 0,
+        index=_ind_idx,
+        placeholder="Select your industry",
     )
+<<<<<<< Updated upstream
     _rev_options = ["$1M to $3M", "$3M to $10M", "$10M to $30M", "$30M+"]
+=======
+    _rev_options = ["Under $1M", "$1M to $3M", "$3M to $10M", "$10M to $30M", "$30M+"]
+>>>>>>> Stashed changes
     _rev_idx = _rev_options.index(st.session_state.revenue) if st.session_state.revenue in _rev_options else None
     st.session_state.revenue = st.selectbox(
         "Annual revenue band",
@@ -870,12 +914,12 @@ def screen_context():
         if st.button("Back", key="ctx_back", use_container_width=True):
             go("intro")
     with col2:
-        ready = bool(st.session_state.company) and bool(st.session_state.revenue)
+        ready = bool(st.session_state.company) and bool(st.session_state.revenue) and bool(st.session_state.industry)
         if st.button("Continue to the audit", key="ctx_next", use_container_width=True, disabled=not ready):
             st.session_state.dim_idx = 0
             go("dim")
     if not ready:
-        st.markdown('<p class="sa-footnote">Company name and revenue band are required to continue.</p>', unsafe_allow_html=True)
+        st.markdown('<p class="sa-footnote">Company name, industry, and revenue band are required to continue.</p>', unsafe_allow_html=True)
 
 def render_question(q):
     qid = q["id"]
@@ -926,7 +970,22 @@ def render_question(q):
             placeholder=placeholder,
         )
         if bench:
+<<<<<<< Updated upstream
             st.caption(f"Industry benchmark: 25th {bench['p25']} · median {bench['p50']} · 75th {bench['p75']}")
+=======
+            _BENCH_UNITS = {
+                "per_q_turnover_pct": "%", "fin_q_ar_over_60_pct": "%",
+                "sw_q_software_spend_pct": "%", "sal_q_monthly_churn_pct": "%",
+                "ops_q_on_time_delivery_pct": "%",
+                "per_q_days_to_fill": " days", "fin_q_days_to_close": " days",
+                "ops_q_mttr_hours": " hrs",
+                "sw_q_num_saas_tools": " tools", "ai_q_num_ai_workflows": "",
+                "sal_q_cac": "",
+            }
+            _u = _BENCH_UNITS.get(qid, "")
+            _fmt = lambda v: f"${v:,.0f}" if qid == "sal_q_cac" else f"{v:g}{_u}"
+            st.caption(f"Industry benchmark: 25th: {_fmt(bench['p25'])} · Median: {_fmt(bench['p50'])} · 75th: {_fmt(bench['p75'])}")
+>>>>>>> Stashed changes
         import re as _re
         cleaned = val.strip().replace(",", "").replace("$", "").replace("%", "").replace("~", "")
         # Handle k/K suffix: multiply by 1000 instead of string replace
@@ -954,6 +1013,7 @@ def screen_dimension():
     st.markdown(f'<p class="sa-lede">{dim["summary"]}</p>', unsafe_allow_html=True)
     # Progress (consistent 1-8 scale: context=1, dims=2-7)
     st.progress((idx + 2) / (total + 2))
+<<<<<<< Updated upstream
     # Running tally of answered questions across completed dimensions
     if idx > 0:
         answered_so_far = 0
@@ -968,6 +1028,37 @@ def screen_dimension():
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     num_q = len(dim["questions"])
     for qi, q in enumerate(dim["questions"], 1):
+=======
+    # Running tally + time estimate
+    total_all_q = sum(len(d["questions"]) for d in DIMENSIONS)
+    answered_so_far = 0
+    total_so_far = 0
+    for prev_dim in DIMENSIONS[:idx]:
+        for pq in prev_dim["questions"]:
+            total_so_far += 1
+            ans = st.session_state.answers.get(pq["id"])
+            if ans not in (None, "N/A", ""):
+                answered_so_far += 1
+    remaining_q = total_all_q - total_so_far
+    est_minutes = max(1, round(remaining_q * 20 / 60))
+    time_label = f"~{est_minutes} min remaining" if est_minutes > 1 else "~1 min remaining"
+    if idx > 0:
+        st.caption(f"{answered_so_far} of {total_so_far} questions answered across {idx} completed dimension{'s' if idx > 1 else ''}. {time_label}.")
+    else:
+        st.caption(f"{time_label} ({total_all_q} questions total).")
+    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+    num_q = len(dim["questions"])
+    _last_group = None
+    for qi, q in enumerate(dim["questions"], 1):
+        _grp = q.get("group")
+        if _grp and _grp != _last_group:
+            st.markdown(
+                f'<p style="font-family:Fraunces,Georgia,serif;font-size:1.05rem;font-weight:400;'
+                f'color:var(--accent);margin:1.4rem 0 0.4rem;letter-spacing:0.01em">{_grp}</p>',
+                unsafe_allow_html=True,
+            )
+            _last_group = _grp
+>>>>>>> Stashed changes
         st.markdown(
             f'<p style="font-size:0.85rem;letter-spacing:0.12em;text-transform:uppercase;'
             f'color:var(--muted);margin:0 0 2px">Question {qi} of {num_q}</p>',
@@ -1037,12 +1128,27 @@ def screen_results():
             go("dim")
         return
     band_id, band_label, band_narrative = r["band"]
-    st.markdown(f'<div class="sa-band">{band_label}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sa-band sa-band--{band_id}">{band_label}</div>', unsafe_allow_html=True)
     st.markdown(
-        f'<div class="sa-card"><div class="label">Overall structural score</div>'
+        f'<div class="sa-card sa-score-hero"><div class="label">Overall structural score</div>'
         f'<div class="val">{r["overall"]:.1f}<span class="ten">/ 100</span></div></div>',
         unsafe_allow_html=True,
     )
+    # Percentile ranking language
+    _BAND_PERCENTILE = {
+        "critical": "bottom 15% of businesses at this revenue band",
+        "fragile": "lower third of businesses at this revenue band",
+        "functional": "middle of the pack for businesses at this revenue band",
+        "strong": "top quarter of businesses at this revenue band",
+        "durable": "top 10% of businesses at this revenue band",
+    }
+    _pctl_text = _BAND_PERCENTILE.get(band_id, "")
+    if _pctl_text:
+        st.markdown(
+            f'<p style="font-size:1.05rem;color:var(--ink);margin:0.5rem 0 0.8rem">'
+            f'This places {company} in the <strong>{_pctl_text}</strong>.</p>',
+            unsafe_allow_html=True,
+        )
     if band_narrative:
         st.markdown(f"<p>{band_narrative}</p>", unsafe_allow_html=True)
 
@@ -1085,6 +1191,10 @@ def screen_results():
           <a href="#" data-target="sa-dimensions">Dimensions</a>
           <a href="#" data-target="sa-risks">Risks</a>
           <a href="#" data-target="sa-opportunities">Opportunities</a>
+<<<<<<< Updated upstream
+=======
+          <a href="#" data-target="sa-plan">90-Day Plan</a>
+>>>>>>> Stashed changes
           <a href="#" data-target="sa-writeup">Get the write-up</a>
           <a href="#" data-target="sa-next">Next step</a>
         </div>
@@ -1103,6 +1213,73 @@ def screen_results():
         """,
         height=32,
     )
+<<<<<<< Updated upstream
+=======
+    # --- Radar chart ---
+    scored_for_radar = [d for d in r["dimensions"] if d["score"] is not None]
+    if len(scored_for_radar) >= 3:
+        import math as _math
+        _n = len(scored_for_radar)
+        _cx, _cy, _R = 200, 200, 150
+        _angle_offset = -_math.pi / 2  # start at top
+
+        def _polar(i, pct):
+            a = _angle_offset + 2 * _math.pi * i / _n
+            r = _R * pct / 100.0
+            return _cx + r * _math.cos(a), _cy + r * _math.sin(a)
+
+        # Grid lines at 25, 50, 75, 100
+        _grid_svg = ""
+        for pct in [25, 50, 75, 100]:
+            pts = " ".join(f"{_polar(i, pct)[0]:.1f},{_polar(i, pct)[1]:.1f}" for i in range(_n))
+            _grid_svg += f'<polygon points="{pts}" fill="none" stroke="#D9CFBC" stroke-width="1"/>\n'
+
+        # Axis lines
+        _axis_svg = ""
+        for i in range(_n):
+            x, y = _polar(i, 100)
+            _axis_svg += f'<line x1="{_cx}" y1="{_cy}" x2="{x:.1f}" y2="{y:.1f}" stroke="#D9CFBC" stroke-width="1"/>\n'
+
+        # Data polygon
+        _data_pts = " ".join(f"{_polar(i, d['score'])[0]:.1f},{_polar(i, d['score'])[1]:.1f}" for i, d in enumerate(scored_for_radar))
+        _data_svg = f'<polygon points="{_data_pts}" fill="rgba(139,106,63,0.18)" stroke="#8B6A3F" stroke-width="2"/>\n'
+
+        # Data dots + labels
+        _dots_svg = ""
+        _labels_svg = ""
+        for i, d in enumerate(scored_for_radar):
+            x, y = _polar(i, d["score"])
+            _dots_svg += f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="#8B6A3F"/>\n'
+            lx, ly = _polar(i, 115)
+            # Compute text-anchor based on position
+            a = _angle_offset + 2 * _math.pi * i / _n
+            if abs(_math.cos(a)) < 0.15:
+                anchor = "middle"
+            elif _math.cos(a) > 0:
+                anchor = "start"
+            else:
+                anchor = "end"
+            # Short name
+            short = d["name"].replace(" & ", " &amp; ")
+            _labels_svg += (
+                f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="{anchor}" '
+                f'font-family="Inter,sans-serif" font-size="11" fill="#14223D">'
+                f'{short} <tspan font-weight="600">({d["score"]:.0f})</tspan></text>\n'
+            )
+
+        _radar_html = f"""
+        <div style="text-align:center;margin:1rem 0 0.5rem">
+          <svg viewBox="0 0 400 400" width="360" height="360" xmlns="http://www.w3.org/2000/svg">
+            {_grid_svg}{_axis_svg}{_data_svg}{_dots_svg}{_labels_svg}
+          </svg>
+        </div>
+        """
+        _components.html(
+            f'<div style="background:transparent;margin:0;padding:0">{_radar_html}</div>',
+            height=380,
+        )
+
+>>>>>>> Stashed changes
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
 
     # Dimensions
@@ -1214,6 +1391,48 @@ def screen_results():
                 unsafe_allow_html=True,
             )
 
+    # --- 90-Day Focus Plan ---
+    _plan_items = []
+    for q, dim, score in r["risks"][:3]:
+        rec = q.get("recommendation", "")
+        if rec:
+            _plan_items.append({"dim": dim["name"], "rec": rec, "q": q["text"]})
+    # Fill remaining slots from opportunities if fewer than 3 risks
+    if len(_plan_items) < 3 and r["opportunities"]:
+        for q, dim, score in r["opportunities"]:
+            rec = q.get("recommendation", "")
+            if rec and len(_plan_items) < 3:
+                _plan_items.append({"dim": dim["name"], "rec": rec, "q": q["text"]})
+
+    if _plan_items:
+        st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+        st.markdown('<div id="sa-plan"></div>', unsafe_allow_html=True)
+        st.markdown("## 90-Day Focus Plan")
+        st.markdown(
+            '<p class="sa-lede" style="font-size:1.05rem">'
+            'Three moves, sequenced. The first is the one that unblocks the others.</p>',
+            unsafe_allow_html=True,
+        )
+        _periods = ["Days 1–30", "Days 31–60", "Days 61–90"]
+        _period_labels = ["Stabilize", "Build", "Compound"]
+        for i, item in enumerate(_plan_items):
+            period = _periods[i] if i < len(_periods) else f"Days {i*30+1}–{(i+1)*30}"
+            plabel = _period_labels[i] if i < len(_period_labels) else ""
+            st.markdown(
+                f'<div class="sa-card" style="border-left:3px solid var(--accent)">'
+                f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">'
+                f'<span style="font-family:Fraunces,serif;font-size:1.1rem;color:var(--ink)">{period}</span>'
+                f'<span style="font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent)">{plabel}</span></div>'
+                f'<div style="font-size:0.82rem;color:var(--muted);margin-bottom:4px">{item["dim"]}</div>'
+                f'<div style="font-size:0.97rem;color:var(--ink-2)">{item["rec"]}</div></div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown(
+            '<p style="font-size:0.92rem;color:var(--muted);margin-top:0.5rem;font-style:italic">'
+            'This is the plan. The call is where we pressure-test it.</p>',
+            unsafe_allow_html=True,
+        )
+
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
 
     # --- Email capture (lighter ask, higher conversion) ---
@@ -1241,7 +1460,18 @@ def screen_results():
     elif _ec == "soft_fail":
         st.info("We noted your request. If you do not receive the write-up within 24 hours, reach out directly.")
     else:
+<<<<<<< Updated upstream
         st.success("Got it. Check your inbox.")
+=======
+        st.markdown(
+            '<div style="background:#E8EAE0;border:1px solid #5A6B3F;padding:16px 20px;margin:0.5rem 0">'
+            '<p style="color:#4A5A32;font-weight:600;margin:0 0 4px;font-size:0.95rem">Write-up requested</p>'
+            '<p style="color:#4A5A32;margin:0;font-size:0.9rem">'
+            'Check your inbox. You will receive a short written interpretation of this score, '
+            'covering your top risk, strongest dimension, and one concrete next step.</p></div>',
+            unsafe_allow_html=True,
+        )
+>>>>>>> Stashed changes
 
     # --- Call CTA (heavier ask — comes second) ---
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
@@ -1347,6 +1577,21 @@ def screen_results():
                 st.session_state.answers = current_answers
                 st.session_state.industry = current_industry
 
+<<<<<<< Updated upstream
+=======
+    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+    _components.html(
+        """
+        <div style="text-align:center;margin:0.5rem 0">
+          <a href="#" style="font-family:Inter,sans-serif;font-size:13px;color:#8B6A3F;text-decoration:none;letter-spacing:0.04em"
+             onclick="event.preventDefault();try{window.parent.document.querySelector('section.stMain').scrollTo({top:0,behavior:'smooth'})}catch(e){}">
+             Back to top
+          </a>
+        </div>
+        """,
+        height=32,
+    )
+>>>>>>> Stashed changes
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     if st.button("Start a new audit"):
         st.session_state._confirm_new = True

@@ -240,6 +240,7 @@ DIMENSIONS = [
         "questions": [
             {
                 "id": "per_01",
+                "group": "Owner Dependency & Leadership",
                 "text": "If I were unreachable for 30 days, the business would continue operating at near-normal capacity without me.",
                 "type": "likert",
                 "weight": 2.0,
@@ -251,6 +252,7 @@ DIMENSIONS = [
             },
             {
                 "id": "per_02",
+                "group": "Owner Dependency & Leadership",
                 "text": "More than half of my leadership team would be considered A-players by a top competitor in our industry.",
                 "type": "likert",
                 "weight": 1.8,
@@ -262,6 +264,7 @@ DIMENSIONS = [
             },
             {
                 "id": "per_03",
+                "group": "Owner Dependency & Leadership",
                 "text": "Every recurring decision in the business has a single named owner who does not need to check with me.",
                 "type": "likert",
                 "weight": 1.5,
@@ -273,6 +276,7 @@ DIMENSIONS = [
             },
             {
                 "id": "per_04",
+                "group": "Team Quality & Retention",
                 "text": "When someone on the team makes a commitment with a date, it is met or renegotiated before the date, not missed silently.",
                 "type": "likert",
                 "weight": 1.5,
@@ -284,6 +288,7 @@ DIMENSIONS = [
             },
             {
                 "id": "per_05",
+                "group": "Team Quality & Retention",
                 "text": "In the last 12 months, I have removed or reassigned at least one underperformer without dragging it out.",
                 "type": "yesno",
                 "weight": 1.2,
@@ -295,6 +300,7 @@ DIMENSIONS = [
             },
             {
                 "id": "per_06",
+                "group": "Team Quality & Retention",
                 "text": "Every key seat in the business has a documented backup or succession plan.",
                 "type": "yesno",
                 "weight": 1.0,
@@ -306,6 +312,7 @@ DIMENSIONS = [
             },
             {
                 "id": "per_07",
+                "group": "Team Quality & Retention",
                 "text": "Compensation for our critical roles is at or above the 50th percentile for our market.",
                 "type": "likert",
                 "weight": 1.0,
@@ -317,6 +324,7 @@ DIMENSIONS = [
             },
             {
                 "id": "per_q_turnover_pct",
+                "group": "Workforce Metrics",
                 "text": "Annual voluntary turnover (%)",
                 "type": "percent",
                 "weight": 1.5,
@@ -328,6 +336,7 @@ DIMENSIONS = [
             },
             {
                 "id": "per_q_days_to_fill",
+                "group": "Workforce Metrics",
                 "text": "Average days to fill a role",
                 "type": "number",
                 "weight": 1.0,
@@ -347,6 +356,7 @@ DIMENSIONS = [
         "questions": [
             {
                 "id": "fin_01",
+                "group": "Financial Visibility",
                 "text": "I can state, within 10% accuracy, how many weeks of cash the business has available right now.",
                 "type": "likert",
                 "weight": 2.0,
@@ -358,6 +368,7 @@ DIMENSIONS = [
             },
             {
                 "id": "fin_02",
+                "group": "Financial Visibility",
                 "text": "I know the gross margin of every meaningful product line or service offering we sell.",
                 "type": "likert",
                 "weight": 1.8,
@@ -369,6 +380,7 @@ DIMENSIONS = [
             },
             {
                 "id": "fin_03",
+                "group": "Financial Visibility",
                 "text": "I can explain on one page what it costs to acquire a customer and what that customer is worth over their lifetime.",
                 "type": "likert",
                 "weight": 1.5,
@@ -380,6 +392,7 @@ DIMENSIONS = [
             },
             {
                 "id": "fin_04",
+                "group": "Discipline & Controls",
                 "text": "Books close within 10 business days of month-end, every month.",
                 "type": "yesno",
                 "weight": 1.5,
@@ -391,6 +404,7 @@ DIMENSIONS = [
             },
             {
                 "id": "fin_05",
+                "group": "Discipline & Controls",
                 "text": "A budget vs. actuals review happens on a fixed cadence with a named owner, not just when something looks off.",
                 "type": "likert",
                 "weight": 1.2,
@@ -402,6 +416,7 @@ DIMENSIONS = [
             },
             {
                 "id": "fin_06",
+                "group": "Discipline & Controls",
                 "text": "All federal, state, and local tax filings are current, with no open surprises from any authority.",
                 "type": "yesno",
                 "weight": 1.2,
@@ -413,6 +428,7 @@ DIMENSIONS = [
             },
             {
                 "id": "fin_07",
+                "group": "Discipline & Controls",
                 "text": "DSO is tracked monthly and I know whether it is trending up, flat, or down.",
                 "type": "likert",
                 "weight": 1.0,
@@ -424,6 +440,7 @@ DIMENSIONS = [
             },
             {
                 "id": "fin_08",
+                "group": "Discipline & Controls",
                 "text": "My own compensation is set at market replacement cost for my role, not whatever is left over at the end of the month.",
                 "type": "yesno",
                 "weight": 0.8,
@@ -435,6 +452,7 @@ DIMENSIONS = [
             },
             {
                 "id": "fin_q_days_to_close",
+                "group": "Operational Metrics",
                 "text": "Days to close monthly books",
                 "type": "number",
                 "weight": 1.2,
@@ -446,6 +464,7 @@ DIMENSIONS = [
             },
             {
                 "id": "fin_q_ar_over_60_pct",
+                "group": "Operational Metrics",
                 "text": "Accounts receivable over 60 days (%)",
                 "type": "percent",
                 "weight": 1.0,
@@ -465,6 +484,7 @@ DIMENSIONS = [
         "questions": [
             {
                 "id": "sw_01",
+                "group": "Systems of Record",
                 "text": "For every critical domain (customers, finances, employees, operations) there is one system of record, and everyone on the team knows which one.",
                 "type": "likert",
                 "weight": 1.8,
@@ -476,6 +496,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sw_02",
+                "group": "Systems of Record",
                 "text": "Core systems are integrated well enough that no one spends meaningful time re-keying data between them.",
                 "type": "likert",
                 "weight": 1.5,
@@ -487,6 +508,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sw_03",
+                "group": "Systems of Record",
                 "text": "Our CRM or primary customer database is clean enough that I trust the numbers I pull from it without caveats.",
                 "type": "likert",
                 "weight": 1.2,
@@ -498,6 +520,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sw_04",
+                "group": "Governance & Hygiene",
                 "text": "When someone leaves the company, access to every system is revoked within one business day via a documented process.",
                 "type": "yesno",
                 "weight": 1.0,
@@ -509,6 +532,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sw_05",
+                "group": "Governance & Hygiene",
                 "text": "I could produce a complete list of every paid software tool the business pays for in under 15 minutes.",
                 "type": "yesno",
                 "weight": 0.8,
@@ -520,6 +544,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sw_06",
+                "group": "Governance & Hygiene",
                 "text": "We have audited software spend in the last 12 months and eliminated or renegotiated at least one line item.",
                 "type": "yesno",
                 "weight": 0.7,
@@ -531,6 +556,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sw_q_num_saas_tools",
+                "group": "Spend Metrics",
                 "text": "Number of paid SaaS tools in use",
                 "type": "number",
                 "weight": 0.8,
@@ -542,6 +568,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sw_q_software_spend_pct",
+                "group": "Spend Metrics",
                 "text": "Annual software spend as % of revenue",
                 "type": "percent",
                 "weight": 0.8,
@@ -561,6 +588,7 @@ DIMENSIONS = [
         "questions": [
             {
                 "id": "ai_01",
+                "group": "Adoption & Usage",
                 "text": "The business has at least one AI-enabled workflow in production today that is saving time or money. Not a pilot, in production.",
                 "type": "yesno",
                 "weight": 1.8,
@@ -572,6 +600,7 @@ DIMENSIONS = [
             },
             {
                 "id": "ai_02",
+                "group": "Adoption & Usage",
                 "text": "I personally use AI tools in my own workflow at least weekly, in ways that materially change the output of my work.",
                 "type": "likert",
                 "weight": 1.5,
@@ -583,6 +612,7 @@ DIMENSIONS = [
             },
             {
                 "id": "ai_03",
+                "group": "Adoption & Usage",
                 "text": "People beyond me on the team know how to use AI tools effectively for their own work.",
                 "type": "likert",
                 "weight": 1.2,
@@ -594,6 +624,7 @@ DIMENSIONS = [
             },
             {
                 "id": "ai_04",
+                "group": "Policy & Scale",
                 "text": "We have a written, simple policy on acceptable AI use covering customer data and confidentiality.",
                 "type": "yesno",
                 "weight": 1.0,
@@ -605,6 +636,7 @@ DIMENSIONS = [
             },
             {
                 "id": "ai_q_num_ai_workflows",
+                "group": "Policy & Scale",
                 "text": "Number of workflows with AI augmentation in production",
                 "type": "number",
                 "weight": 1.2,
@@ -624,6 +656,7 @@ DIMENSIONS = [
         "questions": [
             {
                 "id": "sal_01",
+                "group": "Pipeline & Targeting",
                 "text": "I can describe our ideal customer in one sentence, and my team would describe them the same way.",
                 "type": "likert",
                 "weight": 1.8,
@@ -635,6 +668,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sal_02",
+                "group": "Pipeline & Targeting",
                 "text": "Deals above a meaningful size usually require my personal involvement to close.",
                 "type": "likert",
                 "weight": 1.8,
@@ -646,6 +680,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sal_03",
+                "group": "Pipeline & Targeting",
                 "text": "I can open our pipeline right now and see every open opportunity with a stage, dollar value, and a next step.",
                 "type": "likert",
                 "weight": 1.5,
@@ -657,6 +692,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sal_04",
+                "group": "Retention & Economics",
                 "text": "I track customer churn or retention on a fixed cadence and know the number for the trailing 12 months.",
                 "type": "likert",
                 "weight": 1.5,
@@ -668,6 +704,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sal_05",
+                "group": "Retention & Economics",
                 "text": "I know which marketing channels produce our best customers, not just our cheapest leads.",
                 "type": "likert",
                 "weight": 1.2,
@@ -679,6 +716,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sal_06",
+                "group": "Retention & Economics",
                 "text": "Discounts above a set threshold require approval. They are not handed out by reps to close deals.",
                 "type": "yesno",
                 "weight": 1.0,
@@ -690,6 +728,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sal_07",
+                "group": "Retention & Economics",
                 "text": "A meaningful share of new customers came from referrals or word-of-mouth in the last 12 months.",
                 "type": "likert",
                 "weight": 0.8,
@@ -701,6 +740,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sal_q_cac",
+                "group": "Unit Economics",
                 "text": "Customer acquisition cost ($)",
                 "type": "number",
                 "weight": 1.2,
@@ -712,6 +752,7 @@ DIMENSIONS = [
             },
             {
                 "id": "sal_q_monthly_churn_pct",
+                "group": "Unit Economics",
                 "text": "Monthly customer churn rate (%)",
                 "type": "percent",
                 "weight": 1.2,
@@ -731,6 +772,7 @@ DIMENSIONS = [
         "questions": [
             {
                 "id": "ops_01",
+                "group": "Delivery & Process",
                 "text": "Our core delivery workflows are documented well enough that a new hire could run them with minimal supervision.",
                 "type": "likert",
                 "weight": 1.8,
@@ -742,6 +784,7 @@ DIMENSIONS = [
             },
             {
                 "id": "ops_02",
+                "group": "Delivery & Process",
                 "text": "We meet our commitments to customers (on time and in full) more than 95% of the time.",
                 "type": "likert",
                 "weight": 1.5,
@@ -753,6 +796,7 @@ DIMENSIONS = [
             },
             {
                 "id": "ops_03",
+                "group": "Delivery & Process",
                 "text": "I can name the single biggest bottleneck in our operation right now, and we are actively working on it.",
                 "type": "likert",
                 "weight": 1.5,
@@ -764,6 +808,7 @@ DIMENSIONS = [
             },
             {
                 "id": "ops_04",
+                "group": "Delivery & Process",
                 "text": "Rework (redoing work that was delivered incorrectly the first time) is rare and tracked when it happens.",
                 "type": "likert",
                 "weight": 1.2,
@@ -775,6 +820,7 @@ DIMENSIONS = [
             },
             {
                 "id": "ops_05",
+                "group": "Governance & Risk",
                 "text": "There is a standing KPI review on a fixed cadence that the team actually attends and uses.",
                 "type": "yesno",
                 "weight": 1.2,
@@ -786,6 +832,7 @@ DIMENSIONS = [
             },
             {
                 "id": "ops_06",
+                "group": "Governance & Risk",
                 "text": "No single vendor or supplier represents a concentration risk that would materially damage the business if they disappeared.",
                 "type": "yesno",
                 "weight": 1.0,
@@ -797,6 +844,7 @@ DIMENSIONS = [
             },
             {
                 "id": "ops_07",
+                "group": "Governance & Risk",
                 "text": "Our recurring meetings have agendas, produce decisions with owners, and someone would notice if they were cancelled.",
                 "type": "likert",
                 "weight": 0.8,
@@ -808,6 +856,7 @@ DIMENSIONS = [
             },
             {
                 "id": "ops_q_on_time_delivery_pct",
+                "group": "Performance Metrics",
                 "text": "On-time, in-full delivery rate (%)",
                 "type": "percent",
                 "weight": 1.2,
@@ -819,6 +868,7 @@ DIMENSIONS = [
             },
             {
                 "id": "ops_q_mttr_hours",
+                "group": "Performance Metrics",
                 "text": "Mean time to resolve customer issues (hours)",
                 "type": "number",
                 "weight": 1.0,
