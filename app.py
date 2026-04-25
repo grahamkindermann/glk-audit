@@ -274,7 +274,6 @@ div[data-testid="stRadio"] label {
 #MainMenu, footer, header[data-testid="stHeader"] { visibility: hidden !important; }
 
 /* --- Button hierarchy: ghost class for secondary actions --- */
-div.stButton > button[kind="secondary"],
 div.stButton.sa-ghost > button {
   background: transparent !important;
   color: var(--ink) !important;
