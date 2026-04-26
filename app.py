@@ -417,7 +417,14 @@ _components.html(
         'footer { visibility:hidden!important; }',
         'header[data-testid="stHeader"] { visibility:hidden!important; }',
         '[data-testid="stSidebarCollapsedControl"] { display:none!important; }',
-        '.viewerBadge_container__r5tak { display:none!important; }'
+        '.viewerBadge_container__r5tak { display:none!important; }',
+        '[class*="viewerBadge"] { display:none!important; }',
+        '[class*="StatusWidget"] { display:none!important; }',
+        '[class*="stStatusWidget"] { display:none!important; }',
+        '[data-testid="StatusWidget"] { display:none!important; }',
+        '[class*="stAppStatus"] { display:none!important; }',
+        'a[href*="streamlit.io"] img { display:none!important; }',
+        'a[href*="streamlit.io/cloud"] { display:none!important; }'
       ].join('\\n');
       // Inject into every ancestor frame (app iframe + Cloud shell)
       var w = window;
@@ -434,6 +441,38 @@ _components.html(
         if (w === w.parent) break;
         w = w.parent;
       }
+      // Nuclear: hide any small fixed/absolute element in bottom-right corner
+      function hideCornerJunk(doc) {
+        try {
+          var all = doc.querySelectorAll('*');
+          var vw = doc.defaultView.innerWidth;
+          var vh = doc.defaultView.innerHeight;
+          for (var el of all) {
+            var st = doc.defaultView.getComputedStyle(el);
+            if (st.position !== 'fixed' && st.position !== 'absolute') continue;
+            var r = el.getBoundingClientRect();
+            if (r.width > 0 && r.width < 300 && r.height > 0 && r.height < 200 &&
+                r.right > vw - 200 && r.bottom > vh - 100) {
+              el.style.setProperty('display', 'none', 'important');
+            }
+          }
+        } catch(e) {}
+      }
+      // Run now and again after a delay (elements may load late)
+      var w2 = window;
+      while (w2) {
+        try { hideCornerJunk(w2.document); } catch(e) { break; }
+        if (w2 === w2.parent) break;
+        w2 = w2.parent;
+      }
+      setTimeout(function(){
+        var w3 = window;
+        while (w3) {
+          try { hideCornerJunk(w3.document); } catch(e) { break; }
+          if (w3 === w3.parent) break;
+          w3 = w3.parent;
+        }
+      }, 3000);
     })();
     </script>""",
     height=0,
