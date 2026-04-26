@@ -401,12 +401,42 @@ div.stButton.sa-link > button:hover * {
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
+# Hide Streamlit Community Cloud chrome (Manage App button, footer, header).
+# st.markdown CSS is scoped inside the app container and can't reach Cloud-
+# injected elements, so we use an iframe to inject a <style> tag directly
+# into the parent document's <head>.
+import streamlit.components.v1 as _components
+
+_components.html(
+    """<script>
+    (function(){
+      try {
+        var pd = window.parent.document;
+        if (!pd._saChromeHidden) {
+          pd._saChromeHidden = true;
+          var s = pd.createElement('style');
+          s.textContent = [
+            '[data-testid="manage-app-button"] { display:none!important; }',
+            '.stAppDeployButton { display:none!important; }',
+            '#MainMenu { visibility:hidden!important; }',
+            'footer { visibility:hidden!important; }',
+            'header[data-testid="stHeader"] { visibility:hidden!important; }',
+            '[data-testid="stSidebarCollapsedControl"] { display:none!important; }',
+            '.viewerBadge_container__r5tak { display:none!important; }'
+          ].join('\\n');
+          pd.head.appendChild(s);
+        }
+      } catch(e){}
+    })();
+    </script>""",
+    height=0,
+)
+
 # Scroll to top on every page transition.
 # st.markdown strips <script> tags, so we use st.components.v1.html() which
 # creates a tiny iframe that *can* run JS.  From that iframe we reach up
 # through parent frames to find Streamlit's <section class="stMain"> and
 # reset its scrollTop.
-import streamlit.components.v1 as _components
 
 def _install_parent_js(scroll=True, beforeunload=True, buttons=True, hide_chrome=True):
     """Install all parent-document JS helpers in a single iframe.
@@ -765,7 +795,6 @@ def _capture_email(email: str, company: str, band: str, score: float):
 # Screens
 # ---------------------------------------------------------------------------
 def screen_intro():
-    _install_parent_js(scroll=False, beforeunload=False, buttons=False, hide_chrome=True)
     mark()
     st.markdown('<div class="sa-meta">For the company . Fifteen to twenty minutes . Six dimensions</div>', unsafe_allow_html=True)
     st.markdown("# An operator's diagnostic of the business itself.")
