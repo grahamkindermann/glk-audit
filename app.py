@@ -11,6 +11,7 @@ Reads the rubric directly from rubric.py. Deploy as-is on Streamlit Cloud.
 """
 
 import os
+import re
 import math
 import json
 import base64
@@ -832,8 +833,11 @@ def _capture_email(email: str, company: str, band: str, score: float):
             },
             timeout=8,
         )
-        if resp.status_code < 300:
-            # Fire the event for the drip sequence
+        # Fire the event for the drip sequence.
+        # Contact creation returns 409 for existing contacts — that's fine,
+        # we still want to trigger the drip. Only true failures (5xx, timeout)
+        # should soft-fail.
+        if resp.status_code < 300 or resp.status_code == 409:
             requests.post(
                 "https://app.loops.so/api/v1/events/send",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -1063,10 +1067,9 @@ def render_question(q):
             _u = _BENCH_UNITS.get(qid, "")
             _fmt = lambda v: f"${v:,.0f}" if qid == "sal_q_cac" else f"{v:g}{_u}"
             st.caption(f"Industry benchmark: 25th: {_fmt(bench['p25'])} · Median: {_fmt(bench['p50'])} · 75th: {_fmt(bench['p75'])}")
-        import re as _re
         cleaned = val.strip().replace(",", "").replace("$", "").replace("%", "").replace("~", "")
         # Handle k/K suffix: multiply by 1000 instead of string replace
-        _k_match = _re.match(r'^([0-9]*\.?[0-9]+)[kK]$', cleaned)
+        _k_match = re.match(r'^([0-9]*\.?[0-9]+)[kK]$', cleaned)
         if _k_match:
             cleaned = str(float(_k_match.group(1)) * 1000)
         if cleaned == "":
@@ -1116,7 +1119,7 @@ def screen_dimension():
             _components.html(
                 f'<p style="font-family:Fraunces,Georgia,serif;font-size:1.05rem;font-weight:400;'
                 f'color:#8B6A3F;margin:0;padding:0;letter-spacing:0.01em;line-height:1.4">{_grp}</p>',
-                height=30,
+                height=38,
             )
             _last_group = _grp
         st.markdown(
