@@ -410,23 +410,30 @@ import streamlit.components.v1 as _components
 _components.html(
     """<script>
     (function(){
-      try {
-        var pd = window.parent.document;
-        if (!pd._saChromeHidden) {
-          pd._saChromeHidden = true;
-          var s = pd.createElement('style');
-          s.textContent = [
-            '[data-testid="manage-app-button"] { display:none!important; }',
-            '.stAppDeployButton { display:none!important; }',
-            '#MainMenu { visibility:hidden!important; }',
-            'footer { visibility:hidden!important; }',
-            'header[data-testid="stHeader"] { visibility:hidden!important; }',
-            '[data-testid="stSidebarCollapsedControl"] { display:none!important; }',
-            '.viewerBadge_container__r5tak { display:none!important; }'
-          ].join('\\n');
-          pd.head.appendChild(s);
-        }
-      } catch(e){}
+      var css = [
+        '[data-testid="manage-app-button"] { display:none!important; }',
+        '.stAppDeployButton { display:none!important; }',
+        '#MainMenu { visibility:hidden!important; }',
+        'footer { visibility:hidden!important; }',
+        'header[data-testid="stHeader"] { visibility:hidden!important; }',
+        '[data-testid="stSidebarCollapsedControl"] { display:none!important; }',
+        '.viewerBadge_container__r5tak { display:none!important; }'
+      ].join('\\n');
+      // Inject into every ancestor frame (app iframe + Cloud shell)
+      var w = window;
+      while (w) {
+        try {
+          var d = w.document;
+          if (d && d.head && !d._saChromeHidden) {
+            d._saChromeHidden = true;
+            var s = d.createElement('style');
+            s.textContent = css;
+            d.head.appendChild(s);
+          }
+        } catch(e) { break; }
+        if (w === w.parent) break;
+        w = w.parent;
+      }
     })();
     </script>""",
     height=0,
@@ -444,10 +451,8 @@ def _install_parent_js(scroll=True, beforeunload=True, buttons=True, hide_chrome
     parts = []
     if hide_chrome:
         parts.append("""
-          if (!pd._saChromeHidden) {
-            pd._saChromeHidden = true;
-            var styl = pd.createElement('style');
-            styl.textContent = [
+          (function(){
+            var css = [
               '[data-testid="manage-app-button"] { display:none!important; }',
               '.stAppDeployButton { display:none!important; }',
               '#MainMenu { visibility:hidden!important; }',
@@ -456,8 +461,21 @@ def _install_parent_js(scroll=True, beforeunload=True, buttons=True, hide_chrome
               '[data-testid="stSidebarCollapsedControl"] { display:none!important; }',
               '.viewerBadge_container__r5tak { display:none!important; }'
             ].join('\\n');
-            pd.head.appendChild(styl);
-          }""")
+            var w = window;
+            while (w) {
+              try {
+                var d = w.document;
+                if (d && d.head && !d._saChromeHidden) {
+                  d._saChromeHidden = true;
+                  var styl = d.createElement('style');
+                  styl.textContent = css;
+                  d.head.appendChild(styl);
+                }
+              } catch(e) { break; }
+              if (w === w.parent) break;
+              w = w.parent;
+            }
+          })();""")
     if scroll:
         parts.append("""
           if (!pd._saScrollInstalled) {
