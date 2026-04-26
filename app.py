@@ -837,7 +837,7 @@ def _capture_email(email: str, company: str, band: str, score: float):
             requests.post(
                 "https://app.loops.so/api/v1/events/send",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"email": email, "eventName": "audit_completed_anonymous"},
+                json={"email": email, "eventName": "audit_completed"},
                 timeout=8,
             )
             st.session_state.email_captured = True
@@ -1256,7 +1256,7 @@ def screen_results():
           <a href="#" data-target="sa-risks">Risks</a>
           <a href="#" data-target="sa-opportunities">Opportunities</a>
           <a href="#" data-target="sa-plan">90-Day Plan</a>
-          <a href="#" data-target="sa-writeup">Get the write-up</a>
+          <a href="#" data-target="sa-followup">Get the follow-up</a>
           <a href="#" data-target="sa-next">Next step</a>
         </div>
         <script>
@@ -1522,36 +1522,36 @@ def screen_results():
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
 
     # --- Email capture (lighter ask, higher conversion) ---
-    st.markdown('<div id="sa-writeup"></div>', unsafe_allow_html=True)
-    st.markdown("## Get the write-up")
+    st.markdown('<div id="sa-followup"></div>', unsafe_allow_html=True)
+    st.markdown("## Get the follow-up")
     st.markdown(
-        "Leave an email and we will send a short written interpretation of this score. "
-        "What the band means, which risks are structural, and one concrete next step. "
-        "You will get the write-up and a few follow-up notes. That is it."
+        "Leave an email and we will send a short action plan for what to do with this score this week. "
+        "Which dimension to focus on first, how to assign the first fix, and who else at your company should see the results. "
+        "Two short emails over the next week. That is it."
     )
     st.markdown(
         '<p style="font-size:0.88rem;color:var(--accent);margin:0 0 8px">'
-        'The write-up covers your top risk, your strongest dimension, and the single move most likely to shift the score next quarter.</p>',
+        'Most companies that take the audit never act on it. The follow-up is designed to change that.</p>',
         unsafe_allow_html=True,
     )
     _ec = st.session_state.get("email_captured")
     if not _ec:
         email_val = st.text_input("Email address", key="capture_email", placeholder="founder@yourcompany.com")
-        if st.button("Send me the write-up", key="btn_capture"):
+        if st.button("Send me the action plan", key="btn_capture"):
             if email_val and "@" in email_val and "." in email_val:
                 _capture_email(email_val, company, band_label, r["overall"])
                 st.rerun()
             else:
                 st.warning("Please enter a valid email address.")
     elif _ec == "soft_fail":
-        st.info("We noted your request. If you do not receive the write-up within 24 hours, reach out directly.")
+        st.info("We noted your request. If you do not hear from us within 24 hours, reach out directly.")
     else:
         st.markdown(
             '<div style="background:#E8EAE0;border:1px solid #5A6B3F;padding:16px 20px;margin:0.5rem 0">'
-            '<p style="color:#4A5A32;font-weight:600;margin:0 0 4px;font-size:0.95rem">Write-up requested</p>'
+            '<p style="color:#4A5A32;font-weight:600;margin:0 0 4px;font-size:0.95rem">Follow-up queued</p>'
             '<p style="color:#4A5A32;margin:0;font-size:0.9rem">'
-            'Check your inbox. You will receive a short written interpretation of this score, '
-            'covering your top risk, strongest dimension, and one concrete next step.</p></div>',
+            'Check your inbox over the next few days. You will receive a short action plan for this week '
+            'and a note on what to do if the audit surfaces something bigger than a checklist can fix.</p></div>',
             unsafe_allow_html=True,
         )
 
