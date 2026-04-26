@@ -408,10 +408,26 @@ st.markdown(CSS, unsafe_allow_html=True)
 # reset its scrollTop.
 import streamlit.components.v1 as _components
 
-def _install_parent_js(scroll=True, beforeunload=True, buttons=True):
+def _install_parent_js(scroll=True, beforeunload=True, buttons=True, hide_chrome=True):
     """Install all parent-document JS helpers in a single iframe.
     Each feature is guarded by its own flag so it only installs once."""
     parts = []
+    if hide_chrome:
+        parts.append("""
+          if (!pd._saChromeHidden) {
+            pd._saChromeHidden = true;
+            var styl = pd.createElement('style');
+            styl.textContent = [
+              '[data-testid="manage-app-button"] { display:none!important; }',
+              '.stAppDeployButton { display:none!important; }',
+              '#MainMenu { visibility:hidden!important; }',
+              'footer { visibility:hidden!important; }',
+              'header[data-testid="stHeader"] { visibility:hidden!important; }',
+              '[data-testid="stSidebarCollapsedControl"] { display:none!important; }',
+              '.viewerBadge_container__r5tak { display:none!important; }'
+            ].join('\\n');
+            pd.head.appendChild(styl);
+          }""")
     if scroll:
         parts.append("""
           if (!pd._saScrollInstalled) {
@@ -1011,10 +1027,10 @@ def screen_dimension():
     for qi, q in enumerate(dim["questions"], 1):
         _grp = q.get("group")
         if _grp and _grp != _last_group:
-            st.markdown(
+            _components.html(
                 f'<p style="font-family:Fraunces,Georgia,serif;font-size:1.05rem;font-weight:400;'
-                f'color:var(--accent);margin:1.4rem 0 0.4rem;letter-spacing:0.01em">{_grp}</p>',
-                unsafe_allow_html=True,
+                f'color:#8B6A3F;margin:0;padding:0;letter-spacing:0.01em;line-height:1.4">{_grp}</p>',
+                height=30,
             )
             _last_group = _grp
         st.markdown(
@@ -1144,6 +1160,10 @@ def screen_results():
         .toc { display:flex; flex-wrap:wrap; gap:6px 18px; font-family:"Inter",system-ui,sans-serif; }
         .toc a { font-size:14px; color:#8B6A3F; text-decoration:none; letter-spacing:0.02em; }
         .toc a:hover { text-decoration:underline; }
+        @media(max-width:500px){
+          .toc { gap:5px 10px; }
+          .toc a { font-size:12px; }
+        }
         </style>
         <div class="toc">
           <a href="#" data-target="sa-dimensions">Dimensions</a>
@@ -1154,19 +1174,38 @@ def screen_results():
           <a href="#" data-target="sa-next">Next step</a>
         </div>
         <script>
-        document.querySelectorAll('.toc a').forEach(function(a){
-          a.addEventListener('click', function(e){
-            e.preventDefault();
-            var id = this.getAttribute('data-target');
-            try {
-              var el = window.parent.document.getElementById(id);
-              if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
-            } catch(err) {}
+        (function(){
+          // Jump-link click handler
+          document.querySelectorAll('.toc a').forEach(function(a){
+            a.addEventListener('click', function(e){
+              e.preventDefault();
+              var id = this.getAttribute('data-target');
+              try {
+                var el = window.parent.document.getElementById(id);
+                if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
+              } catch(err) {}
+            });
           });
-        });
+          // Make iframe sticky on mobile
+          try {
+            var fr = window.frameElement;
+            if (fr && window.innerWidth <= 600) {
+              var wrap = fr.closest('.element-container') || fr.parentElement;
+              if (wrap) {
+                wrap.style.position = 'sticky';
+                wrap.style.top = '0';
+                wrap.style.zIndex = '999';
+                wrap.style.background = '#FFFDF8';
+                wrap.style.paddingTop = '4px';
+                wrap.style.paddingBottom = '4px';
+                wrap.style.borderBottom = '1px solid #E8E0D0';
+              }
+            }
+          } catch(e) {}
+        })();
         </script>
         """,
-        height=32,
+        height=36,
     )
     # --- Radar chart ---
     scored_for_radar = [d for d in r["dimensions"] if d["score"] is not None]
@@ -1221,8 +1260,17 @@ def screen_results():
             )
 
         _radar_html = f"""
-        <div style="text-align:center;margin:1rem 0 0.5rem">
-          <svg viewBox="0 0 400 400" width="360" height="360" xmlns="http://www.w3.org/2000/svg">
+        <style>
+          body {{ margin:0; padding:0; background:transparent; }}
+          .radar-wrap {{ text-align:center; margin:1rem 0 0.5rem; }}
+          .radar-wrap svg {{ max-width:440px; width:100%; }}
+          @media(max-width:500px){{
+            .radar-wrap svg {{ max-width:100%; }}
+            .radar-wrap svg text {{ font-size:9px !important; }}
+          }}
+        </style>
+        <div class="radar-wrap">
+          <svg viewBox="-60 -15 520 430" width="100%" xmlns="http://www.w3.org/2000/svg">
             {_grid_svg}{_axis_svg}{_data_svg}{_dots_svg}{_labels_svg}
           </svg>
         </div>
@@ -1402,7 +1450,7 @@ def screen_results():
     )
     _ec = st.session_state.get("email_captured")
     if not _ec:
-        email_val = st.text_input("Email address", key="capture_email", placeholder="you@company.com")
+        email_val = st.text_input("Email address", key="capture_email", placeholder="founder@yourcompany.com")
         if st.button("Send me the write-up", key="btn_capture"):
             if email_val and "@" in email_val and "." in email_val:
                 _capture_email(email_val, company, band_label, r["overall"])
