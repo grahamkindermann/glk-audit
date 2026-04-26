@@ -32,86 +32,10 @@ import os
 MODE = os.environ.get("AUDIT_MODE", "lead_magnet")
 
 # ---------------------------------------------------------------------------
-# TIERS: feature-gate definitions for paid plans
-# "free" features are always available. Each higher tier inherits all
-# features from the tier below.
-#
-# stripe_price_id values are placeholders. Replace with real Stripe price
-# IDs once you create products in the Stripe Dashboard.
+# The audit is fully free. All features are available to every user.
+# Email capture is the conversion mechanism; advisory is where revenue lives.
 # ---------------------------------------------------------------------------
-_FULL_REPORT_FEATURES = {
-    "scores",
-    "risk_ranking",
-    "basic_pdf",
-    "quantitative_benchmarks",
-    "ai_recommendations",
-    "pdf_full",
-    "historical_tracking",
-    "recommendation_tracker",
-}
 
-TIERS = {
-    "free": {
-        "name": "Free Diagnostic",
-        "price_monthly": 0,
-        "price_onetime": 0,
-        "billing_mode": "free",
-        "stripe_price_id": None,
-        "features": {
-            "scores",
-            "risk_ranking",
-            "basic_pdf",
-        },
-    },
-    # "report" is the new primary paid tier: a one-time $149 purchase that
-    # grants lifetime access to the full report features. This replaces the
-    # former $79/mo recurring "pro" subscription.
-    "report": {
-        "name": "Full Report",
-        "price_monthly": 0,
-        "price_onetime": 149,
-        "billing_mode": "payment",   # Stripe Checkout mode
-        "stripe_price_id": os.environ.get("STRIPE_PRICE_REPORT", "price_report_placeholder"),
-        "features": _FULL_REPORT_FEATURES,
-    },
-    # "pro" is kept as an alias for backward compatibility with any existing
-    # subscription rows in the DB. Same features as "report". Do not surface
-    # it in new upgrade flows.
-    "pro": {
-        "name": "Professional (legacy)",
-        "price_monthly": 79,
-        "price_onetime": 0,
-        "billing_mode": "subscription",
-        "stripe_price_id": os.environ.get("STRIPE_PRICE_PRO", "price_pro_placeholder"),
-        "features": _FULL_REPORT_FEATURES,
-    },
-    "team": {
-        "name": "Team",
-        "price_monthly": 299,
-        "price_onetime": 0,
-        "billing_mode": "subscription",
-        "stripe_price_id": os.environ.get("STRIPE_PRICE_TEAM", "price_team_placeholder"),
-        "features": _FULL_REPORT_FEATURES | {
-            "multi_respondent",
-            "team_consensus",
-            "blind_spots",
-            "white_label_pdf",
-        },
-    },
-}
-
-
-def has_feature(tier, feature):
-    """Check if a tier includes a given feature.
-
-    Args:
-        tier: "free", "pro", or "team"
-        feature: feature string (e.g., "ai_recommendations")
-
-    Returns True if the tier includes the feature.
-    """
-    tier_def = TIERS.get(tier, TIERS["free"])
-    return feature in tier_def["features"]
 
 # ---------------------------------------------------------------------------
 # Brand strings
@@ -130,21 +54,7 @@ BRAND = {
 # ---------------------------------------------------------------------------
 CTA = {
     "lead_magnet": {
-        # Upsell block (rendered first in the PDF CTA section). The free
-        # diagnostic exists to earn trust; the Full Report is where the
-        # depth lives. Lead with it. Don't route 100% of free readers to
-        # a 30-minute solo call.
-        "upsell_headline": "See what's actually load-bearing.",
-        "upsell_body": (
-            "The Full Report adds an AI-written executive summary specific to "
-            "your answers, dimension-level analysis, an ROI-ranked action plan, "
-            "and industry benchmarks. Everything this free diagnosis gestures at."
-        ),
-        "upsell_label": "Get the Full Report: $149",
-        "upsell_url":   "https://structural-audit.streamlit.app/?utm=pdf_cta",
-        # Secondary path: a human conversation with Graham. Kept for readers
-        # who want advisory depth instead of the productized report.
-        "headline": "Or, bring Graham in directly.",
+        "headline": "Ready for the conversation behind the score?",
         "primary_label": "Book a 30-min structural review",
         "primary_url":   "https://calendly.com/gkholdingsllcva/structural-review",
         "secondary_label": "Subscribe to Structural Advantage",

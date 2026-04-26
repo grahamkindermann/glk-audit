@@ -28,7 +28,6 @@ from rubric import (
     INSUFFICIENT_DATA_LABEL,
     BRAND,
     CTA,
-    MODE,
 )
 
 # ---------------------------------------------------------------------------
@@ -1565,7 +1564,7 @@ def screen_results():
         "read-out call. Thirty minutes. The audit in front of us. A pressure-test of the top three risks and the one "
         "move that would actually change the score by the next quarter."
     )
-    cal_url = CTA.get(MODE, CTA["lead_magnet"])["primary_url"]
+    cal_url = CTA["lead_magnet"]["primary_url"]
     st.link_button("Book a 30-min structural review", cal_url, use_container_width=False)
 
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
