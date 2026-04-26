@@ -765,6 +765,7 @@ def _capture_email(email: str, company: str, band: str, score: float):
 # Screens
 # ---------------------------------------------------------------------------
 def screen_intro():
+    _install_parent_js(scroll=False, beforeunload=False, buttons=False, hide_chrome=True)
     mark()
     st.markdown('<div class="sa-meta">For the company . Fifteen to twenty minutes . Six dimensions</div>', unsafe_allow_html=True)
     st.markdown("# An operator's diagnostic of the business itself.")
