@@ -867,8 +867,7 @@ def screen_intro():
     )
     st.markdown(
         '<p style="font-size:0.92rem;color:var(--muted);margin:0 0 1.5rem">'
-        'Built by Graham Kindermann, operational advisor to PE-backed services businesses. '
-        'Framework drawn from work across personnel, finance, software, and operations at companies from $1M to $30M+.</p>',
+        'Built by Graham Kindermann, operational advisor to PE-backed services businesses.</p>',
         unsafe_allow_html=True,
     )
     st.markdown("""
