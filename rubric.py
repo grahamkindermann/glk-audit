@@ -56,14 +56,14 @@ CTA = {
     "lead_magnet": {
         "headline": "Ready for the conversation behind the score?",
         "primary_label": "Book a 30-min structural review",
-        "primary_url":   "https://calendly.com/gkholdingsllcva/structural-review",
+        "primary_url":   "https://calendly.com/gkholdingsllcva/advisory-intro",
         "secondary_label": "Subscribe to Structural Advantage",
         "secondary_url":   "https://structuraladvantage.substack.com/",
     },
     "advisory": {
         "headline": "Next step: 30/60/90 execution plan review.",
         "primary_label": "Schedule working session",
-        "primary_url":   "https://calendly.com/gkholdingsllcva/structural-review",
+        "primary_url":   "https://calendly.com/gkholdingsllcva/advisory-intro",
         "secondary_label": None,
         "secondary_url":   None,
     },
