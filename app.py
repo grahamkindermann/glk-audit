@@ -856,13 +856,19 @@ def _capture_email(email: str, company: str, band: str, score: float):
 # ---------------------------------------------------------------------------
 def screen_intro():
     mark()
-    st.markdown('<div class="sa-meta">For the company . Fifteen to twenty minutes . Six dimensions</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sa-meta">For the company . Fifteen to twenty minutes . Six dimensions . Mostly quick ratings</div>', unsafe_allow_html=True)
     st.markdown("# An operator's diagnostic of the business itself.")
     st.markdown(
         '<p class="sa-lede">The Structural Audit is the companion to the Structural Advantage Index. '
         'The Index reads the founder. This reads the company. Fifty questions across six dimensions, '
         'weighted scoring, industry benchmarks where they exist, and a risk-ranked output that tells you '
         'what is load-bearing and what is quietly carrying disproportionate risk.</p>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<p style="font-size:0.92rem;color:var(--muted);margin:0 0 1.5rem">'
+        'Built by Graham Kindermann, operational advisor to PE-backed services businesses. '
+        'Framework drawn from work across personnel, finance, software, and operations at companies from $1M to $30M+.</p>',
         unsafe_allow_html=True,
     )
     st.markdown("""
@@ -880,7 +886,8 @@ This is an honest tool. You will be asked things you do not want to answer. The 
     with st.expander("Have these numbers ready"):
         st.markdown(
             "Most of the audit is qualitative. A handful of questions ask for specific metrics. "
-            "You do not need exact figures, but reasonable estimates will sharpen the result."
+            "You do not need exact figures, but reasonable estimates will sharpen the result. "
+            "If you do not track a number, skip it. The gaps themselves are part of the diagnostic."
         )
         st.markdown("""
 - Annual voluntary turnover (%)
@@ -1130,11 +1137,6 @@ def screen_dimension():
         render_question(q)
         st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
-    # Skip dimension (clears all answers for this dimension so it shows as Insufficient Data)
-    if st.button("Skip this dimension", key=f"dim_skip_{idx}"):
-        for q in dim["questions"]:
-            st.session_state.answers[q["id"]] = "N/A"
-        advance_dim()
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Back", key=f"dim_back_{idx}", use_container_width=True):
@@ -1146,6 +1148,11 @@ def screen_dimension():
         label = "Continue" if idx < total - 1 else "See results"
         if st.button(label, key=f"dim_next_{idx}", use_container_width=True):
             advance_dim()
+    # Skip dimension (below nav, styled as link — less prominent than primary actions)
+    if st.button("Skip this dimension", key=f"dim_skip_{idx}"):
+        for q in dim["questions"]:
+            st.session_state.answers[q["id"]] = "N/A"
+        advance_dim()
     # Save code for cross-device resume
     with st.expander("Save your progress"):
         code = _encode_state()
@@ -1233,6 +1240,7 @@ def screen_results():
             f"The weakest dimension is {weakest['name']} at {weakest['score']:.1f}. "
             f"The strongest is {strongest['name']} at {strongest['score']:.1f}."
             f"{top_risk_text}"
+            f" A 90-day focus plan follows below."
         )
         st.markdown(
             f'<div style="border-left:3px solid var(--accent);padding:14px 18px;margin:1.5rem 0;'
@@ -1413,7 +1421,9 @@ def screen_results():
         if d["score"] is None:
             st.markdown(
                 f'<div class="sa-card"><div class="label">{d["name"]}</div>'
-                f'<div class="val" style="color:var(--muted)">{INSUFFICIENT_DATA_LABEL}</div></div>',
+                f'<div class="val" style="color:var(--muted)">{INSUFFICIENT_DATA_LABEL}</div>'
+                f'<div style="font-size:0.82rem;color:var(--muted);margin-top:6px">'
+                f'This dimension needs at least 60% of questions answered to produce a score.</div></div>',
                 unsafe_allow_html=True,
             )
             if jump_idx is not None:
@@ -1517,8 +1527,9 @@ def screen_results():
                 unsafe_allow_html=True,
             )
         st.markdown(
-            '<p style="font-size:0.92rem;color:var(--muted);margin-top:0.5rem;font-style:italic">'
-            'This is the plan. The call is where we pressure-test it.</p>',
+            '<div style="border-left:3px solid var(--accent);padding:10px 16px;margin:1rem 0 0.5rem;'
+            'font-family:Fraunces,Georgia,serif;font-size:1.05rem;color:var(--ink);line-height:1.45">'
+            'This is the plan. The call is where we pressure-test it.</div>',
             unsafe_allow_html=True,
         )
 
@@ -1558,17 +1569,53 @@ def screen_results():
             unsafe_allow_html=True,
         )
 
-    # --- Call CTA (heavier ask — comes second) ---
+    # --- Call CTA (heavier ask — comes second, band-specific copy) ---
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     st.markdown('<div id="sa-next"></div>', unsafe_allow_html=True)
     st.markdown("## What to do with this")
-    st.markdown(
-        "The audit is honest but it is not a plan. If the shape of the score surprised you, the next useful step is a "
-        "read-out call. Thirty minutes. The audit in front of us. A pressure-test of the top three risks and the one "
-        "move that would actually change the score by the next quarter."
-    )
+    _CTA_COPY = {
+        "critical": (
+            "A score in this range means the business is carrying structural risk that compounds "
+            "with time, not resolves with it. The next useful step is a read-out call. Thirty minutes. "
+            "The audit in front of us. We will identify which of the top risks is load-bearing "
+            "and what a realistic 90-day stabilization looks like."
+        ),
+        "fragile": (
+            "The audit surfaced real gaps, but the business is functioning. The risk is that "
+            "these gaps stay invisible until something forces the issue. The next useful step is a "
+            "read-out call. Thirty minutes. The audit in front of us. A pressure-test of the top "
+            "risks and the one move that would actually change the score by next quarter."
+        ),
+        "functional": (
+            "The audit is honest but it is not a plan. A Functional score means the foundation is real "
+            "but the remaining gaps are load-bearing. The next useful step is a read-out call. Thirty "
+            "minutes. The audit in front of us. We will sequence the two or three moves that would "
+            "push the business into durable territory."
+        ),
+        "strong": (
+            "At this level, the remaining gaps are refinements, not emergencies. The leverage is in "
+            "compounding what already works. The next useful step is a read-out call. Thirty minutes. "
+            "The audit in front of us. We will identify which strengths to protect and which "
+            "refinements have the highest marginal return."
+        ),
+        "durable": (
+            "A Durable score is rare. The business is structurally sound and the question shifts from "
+            "fixing weaknesses to scaling on strength. If you are considering a transaction, preparing "
+            "for a capital event, or expanding into a new vertical, a read-out call sharpens the picture. "
+            "Thirty minutes. The audit in front of us."
+        ),
+    }
+    _cta_text = _CTA_COPY.get(band_id, _CTA_COPY["functional"])
+    st.markdown(_cta_text)
     cal_url = CTA["lead_magnet"]["primary_url"]
-    st.link_button("Book a 30-min structural review", cal_url, use_container_width=False)
+    _CTA_LABELS = {
+        "critical": "Book a 30-min structural review",
+        "fragile": "Book a 30-min structural review",
+        "functional": "Book a 30-min structural review",
+        "strong": "Book a 30-min structural review",
+        "durable": "Book a 30-min read-out call",
+    }
+    st.link_button(_CTA_LABELS.get(band_id, "Book a 30-min structural review"), cal_url, use_container_width=False)
 
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     st.markdown("### If you have not taken the Index yet")

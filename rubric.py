@@ -46,7 +46,7 @@ BRAND = {
         "lead_magnet": "Business Structural Audit",
         "advisory":    "Confidential Advisory Audit",
     },
-    "prepared_by": "Prepared by Graham Kindermann · GLK Holdings LLC · kindermanngraham@gmail.com",
+    "prepared_by": "Prepared by Graham Kindermann · GLK Holdings LLC · graham@grahamkindermann.com",
 }
 
 # ---------------------------------------------------------------------------
@@ -93,28 +93,28 @@ INSUFFICIENT_DATA_LABEL = "Insufficient Data"
 
 # ---------------------------------------------------------------------------
 # Band narratives (two-sentence executive-summary interpretation keyed off
-# band id). Blunt operator voice. Used by report.py only; the Streamlit UI
-# shows the band label without narrative.
+# band id). Blunt operator voice. Used in both the Streamlit UI and PDF
+# reports. Written in second person to match the interactive tool's voice.
 # ---------------------------------------------------------------------------
 BAND_NARRATIVE = {
     "critical": (
-        "The business is structurally fragile across multiple dimensions. "
+        "Your business is structurally fragile across multiple dimensions. "
         "Without intervention, the next shock will expose gaps that could threaten continuity."
     ),
     "fragile": (
-        "The business is functioning but running hot. "
-        "Most of the load is on the owner, and a handful of weak points are carrying disproportionate risk."
+        "Your business is functioning but running hot. "
+        "Most of the load is on you, and a handful of weak points are carrying disproportionate risk."
     ),
     "functional": (
-        "The business has real structural muscle, but the remaining gaps are load-bearing. "
-        "Closing two or three of them would move the business into durable territory."
+        "Your business has real structural muscle, but the remaining gaps are load-bearing. "
+        "Closing two or three of them would move you into durable territory."
     ),
     "strong": (
-        "The business is well-run across most dimensions. "
+        "Your business is well-run across most dimensions. "
         "The remaining gaps are refinements, not emergencies, and the leverage is in compounding what already works."
     ),
     "durable": (
-        "The business is structurally sound and operator-independent. "
+        "Your business is structurally sound and operator-independent. "
         "Focus shifts from fixing weaknesses to protecting the advantage and scaling on strength."
     ),
 }
