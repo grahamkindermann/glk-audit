@@ -607,6 +607,7 @@ def _encode_state():
         "em": ss.get("ebitda_margin", ""),
         "yo": ss.get("years_in_op", ""),
         "oh": ss.get("owner_hours", ""),
+        "ai": ss.get("audit_intent", ""),
     }
     raw = json.dumps(payload, separators=(",", ":")).encode()
     compressed = zlib.compress(raw, 9)
@@ -631,6 +632,7 @@ def _decode_state(code):
         ss["ebitda_margin"] = payload.get("em", "")
         ss["years_in_op"] = payload.get("yo", "")
         ss["owner_hours"] = payload.get("oh", "")
+        ss["audit_intent"] = payload.get("ai", "")
         return True
     except Exception:
         return False
@@ -668,6 +670,7 @@ def _init():
     ss.setdefault("ebitda_margin", "")
     ss.setdefault("years_in_op", "")
     ss.setdefault("owner_hours", "")
+    ss.setdefault("audit_intent", "")
 
 _init()
 
@@ -830,6 +833,7 @@ def _capture_email(email: str, company: str, band: str, score: float):
                 "company": company,
                 "auditBand": band,
                 "auditScore": round(score, 1),
+                "auditIntent": st.session_state.get("audit_intent", ""),
             },
             timeout=8,
         )
@@ -917,7 +921,7 @@ This is an honest tool. You will be asked things you do not want to answer. The 
                 st.rerun()
             else:
                 st.error("Invalid code. Please check and try again.")
-        # Auto-detect localStorage (show hint, not auto-restore)
+        # Auto-detect localStorage and show a hint if a saved audit exists
         _components.html(
             """
             <script>
@@ -925,8 +929,19 @@ This is an honest tool. You will be asked things you do not want to answer. The 
               try {
                 var saved = window.parent.localStorage.getItem('sa_audit_state');
                 if (saved) {
-                  var el = window.parent.document.querySelector('[data-testid="stExpander"]');
-                  // Just a visual hint — the user still needs to click Resume
+                  // Show a hint above the expander
+                  var pd = window.parent.document;
+                  var expanders = pd.querySelectorAll('[data-testid="stExpander"]');
+                  if (expanders.length > 0) {
+                    var exp = expanders[expanders.length - 1];
+                    if (!pd._saResumeHint) {
+                      pd._saResumeHint = true;
+                      var hint = pd.createElement('div');
+                      hint.style.cssText = 'font-family:Inter,sans-serif;font-size:0.88rem;color:#8B6A3F;margin:0 0 6px;padding:8px 12px;background:#FBF8F1;border:1px solid #D9CFBC';
+                      hint.textContent = 'You have an audit in progress in this browser. Open the panel below to resume.';
+                      exp.parentElement.insertBefore(hint, exp);
+                    }
+                  }
                 }
               } catch(e) {}
             })();
@@ -975,6 +990,20 @@ def screen_context():
     st.session_state.respondent = st.text_input(
         "Your role (e.g., Founder / CEO, COO, President)",
         value=st.session_state.respondent,
+    )
+    _INTENT_OPTIONS = [
+        "General curiosity",
+        "Board or investor request",
+        "Preparing for a transaction",
+        "Evaluating advisory support",
+        "Someone recommended it",
+    ]
+    _intent_idx = _INTENT_OPTIONS.index(st.session_state.audit_intent) if st.session_state.audit_intent in _INTENT_OPTIONS else None
+    st.session_state.audit_intent = st.selectbox(
+        "What prompted this audit? (optional)",
+        options=_INTENT_OPTIONS,
+        index=_intent_idx,
+        placeholder="Select if you'd like",
     )
     # Optional firmographics. Auto-expand if any field is already filled (from resume).
     _has_firmographics = any(st.session_state.get(k) for k in ("headcount", "ebitda_margin", "years_in_op", "owner_hours"))
@@ -1268,6 +1297,7 @@ def screen_results():
           <a href="#" data-target="sa-plan">90-Day Plan</a>
           <a href="#" data-target="sa-followup">Get the follow-up</a>
           <a href="#" data-target="sa-next">Next step</a>
+          <a href="#" data-target="sa-share">Share</a>
         </div>
         <script>
         (function(){
@@ -1615,6 +1645,13 @@ def screen_results():
         "durable": "Book a 30-min read-out call",
     }
     st.link_button(_CTA_LABELS.get(band_id, "Book a 30-min structural review"), cal_url, use_container_width=False)
+    st.markdown(
+        '<p style="font-size:0.88rem;color:var(--muted);margin-top:0.8rem">'
+        'Not ready for a call? <a href="https://structuraladvantage.substack.com/" '
+        'style="color:var(--accent)">Subscribe to Structural Advantage</a> for a weekly essay '
+        'on how operators build businesses that last.</p>',
+        unsafe_allow_html=True,
+    )
 
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     st.markdown("### If you have not taken the Index yet")
@@ -1622,6 +1659,58 @@ def screen_results():
         "The Structural Advantage Index is the personal companion to this audit. Eleven minutes. An operator archetype. "
         "The shape you bring to the work, named. Most operators find the two read differently when held side by side. "
         "[Open the Index &rarr;](https://structuraladvantageindex.netlify.app/)"
+    )
+
+    # --- Share summary (plain text for forwarding to team) ---
+    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+    st.markdown('<div id="sa-share"></div>', unsafe_allow_html=True)
+    st.markdown("### Share with your team")
+    st.markdown(
+        "Copy a plain-text summary to send to a co-founder, CFO, or board member. "
+        "The audit is more useful when the people who need to act on it can see it."
+    )
+    _summary_lines = [
+        f"STRUCTURAL AUDIT — {company}",
+        f"Overall score: {r['overall']:.1f} / 100 ({band_label})",
+        "",
+    ]
+    for d in r["dimensions"]:
+        if d["score"] is not None:
+            _summary_lines.append(f"  {d['name']}: {d['score']:.1f}")
+        else:
+            _summary_lines.append(f"  {d['name']}: Insufficient Data")
+    if r["risks"]:
+        _summary_lines.append("")
+        _summary_lines.append("TOP RISKS:")
+        for q, dim, score in r["risks"][:3]:
+            _summary_lines.append(f"  [{dim['name']}] {q['text']}")
+    if _plan_items:
+        _summary_lines.append("")
+        _summary_lines.append("90-DAY FOCUS PLAN:")
+        _periods = ["Days 1-30", "Days 31-60", "Days 61-90"]
+        for i, item in enumerate(_plan_items):
+            period = _periods[i] if i < len(_periods) else f"Days {i*30+1}-{(i+1)*30}"
+            _summary_lines.append(f"  {period} ({item['dim']}): {item['rec']}")
+    _summary_lines.append("")
+    _summary_lines.append(f"Take the audit: https://structural-audit.streamlit.app/")
+    _share_text = "\\n".join(_summary_lines)
+    _components.html(
+        f"""
+        <style>
+        body {{ margin:0; padding:0; background:transparent; }}
+        button {{
+          background:#14223D; color:#F4EFE6; border:none; padding:8px 18px;
+          font-family:"Inter",system-ui,sans-serif; font-size:13px; font-weight:500;
+          cursor:pointer; letter-spacing:0.02em;
+        }}
+        button:hover {{ background:#2A3758; }}
+        .ok {{ color:#8B6A3F; font-size:12px; margin-left:8px; font-family:"Inter",system-ui,sans-serif; }}
+        </style>
+        <button onclick="navigator.clipboard.writeText(`{_share_text}`).then(function(){{document.getElementById('share_ok').textContent='Copied. Paste into an email or message.'}})">
+          Copy summary to clipboard
+        </button><span id="share_ok" class="ok"></span>
+        """,
+        height=42,
     )
 
     # --- Save code (visible, not buried) ---
@@ -1732,7 +1821,7 @@ def screen_results():
                 st.session_state._confirm_new = False
                 for k in ["step", "company", "industry", "revenue", "respondent", "answers", "dim_idx",
                           "headcount", "ebitda_margin", "years_in_op", "owner_hours",
-                          "email_captured"]:
+                          "audit_intent", "email_captured"]:
                     if k in st.session_state:
                         del st.session_state[k]
                 _init()
