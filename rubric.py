@@ -3,14 +3,13 @@ Structural Advantage: Business Audit Rubric
 =============================================
 
 All scoring content lives here. Edit freely; do not edit app.py to change
-content. scoring.py consumes this file as plain data.
+content. app.py consumes this file as plain data.
 
 To change the product's behavior, edit (in order of how often you'll touch it):
-    1. MODE                     : switch lead-magnet vs. advisory build
-    2. Question text / weights  : inside DIMENSIONS
-    3. Copy (risk / opp / rec)  : inside each question
-    4. BANDS / thresholds       : scoring tier boundaries
-    5. CTA / BRAND              : report framing
+    1. Question text / weights  : inside DIMENSIONS
+    2. Copy (risk / opp / rec)  : inside each question
+    3. BANDS / thresholds       : scoring tier boundaries
+    4. CTA / BRAND              : report framing
 """
 
 # ---------------------------------------------------------------------------
@@ -21,36 +20,16 @@ To change the product's behavior, edit (in order of how often you'll touch it):
 RUBRIC_VERSION = "0.1.0"
 
 # ---------------------------------------------------------------------------
-# MODE
-# "lead_magnet" -> scores + bands + top 3 risks only.
-# "advisory"    -> adds opportunities, written recommendations, 30/60/90 block.
-#
-# Set via environment variable AUDIT_MODE to avoid editing this file.
-# Defaults to "lead_magnet" if not set.
-# ---------------------------------------------------------------------------
-import os
-MODE = os.environ.get("AUDIT_MODE", "lead_magnet")
-
-# ---------------------------------------------------------------------------
-# The audit is fully free. All features are available to every user.
-# Email capture is the conversion mechanism; advisory is where revenue lives.
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # Brand strings
 # ---------------------------------------------------------------------------
 BRAND = {
     "wordmark": "STRUCTURAL ADVANTAGE",
-    "cover_subtitle": {
-        "lead_magnet": "Business Structural Audit",
-        "advisory":    "Confidential Advisory Audit",
-    },
+    "cover_subtitle": "Business Structural Audit",
     "prepared_by": "Prepared by Graham Kindermann · GLK Holdings LLC · graham@grahamkindermann.com",
 }
 
 # ---------------------------------------------------------------------------
-# CTA blocks per mode
+# CTA blocks
 # ---------------------------------------------------------------------------
 CTA = {
     "lead_magnet": {
@@ -59,13 +38,6 @@ CTA = {
         "primary_url":   "https://calendly.com/gkholdingsllcva/advisory-intro",
         "secondary_label": "Subscribe to Structural Advantage",
         "secondary_url":   "https://structuraladvantage.substack.com/",
-    },
-    "advisory": {
-        "headline": "Next step: 30/60/90 execution plan review.",
-        "primary_label": "Schedule working session",
-        "primary_url":   "https://calendly.com/gkholdingsllcva/advisory-intro",
-        "secondary_label": None,
-        "secondary_url":   None,
     },
 }
 
@@ -88,7 +60,6 @@ BANDS = [
 # the dimension is marked INSUFFICIENT_DATA_LABEL and excluded from the
 # overall weighted average. E.g. 0.60 means at least 60% must be answered.
 MINIMUM_ANSWERED_FRACTION = 0.60
-INSUFFICIENT_DATA_THRESHOLD = 0.40  # kept for backward compat; not used in app.py
 INSUFFICIENT_DATA_LABEL = "Insufficient Data"
 
 # ---------------------------------------------------------------------------
@@ -790,23 +761,6 @@ DIMENSIONS = [
             },
         ],
     },
-]
-
-# ---------------------------------------------------------------------------
-# Firmographics (intake screen, not scored)
-# Stored in the JSON export and printed on the PDF cover.
-# ---------------------------------------------------------------------------
-FIRMOGRAPHICS = [
-    {"id": "company_name", "label": "Company name",                          "type": "text"},
-    {"id": "revenue_band", "label": "Annual revenue",                        "type": "select",
-     "options": ["<$1M", "$1 to $5M", "$5 to $20M", "$20 to $50M", "$50 to $100M", "$100M+"]},
-    {"id": "ebitda_margin", "label": "EBITDA margin (%)",                    "type": "int"},
-    {"id": "employees",    "label": "Full-time headcount",                   "type": "int"},
-    {"id": "industry",     "label": "Industry",                              "type": "select",
-     "options": ["SaaS", "Professional Services", "Manufacturing",
-                 "Retail / E-commerce", "Healthcare", "Financial Services", "Other"]},
-    {"id": "years",        "label": "Years in operation",                    "type": "int"},
-    {"id": "owner_hours",  "label": "Owner's weekly hours in the business",  "type": "int"},
 ]
 
 # ---------------------------------------------------------------------------

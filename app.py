@@ -16,6 +16,7 @@ import math
 import json
 import base64
 import zlib
+import datetime as _dt
 import requests
 import streamlit as st
 
@@ -743,6 +744,15 @@ def score_question(q, answer, industry):
         return None, False
     return None, False
 
+def _band_for_score(score):
+    """Return (band_id, band_label) for a numeric score, or None."""
+    if score is None:
+        return None
+    for bid, lo, hi, label in BANDS:
+        if lo <= score < hi:
+            return (bid, label)
+    return None
+
 def compute_results():
     """
     Returns dict:
@@ -1217,7 +1227,6 @@ def screen_results():
     mark()
     r = compute_results()
     company = st.session_state.company or "The Company"
-    import datetime as _dt
     _audit_date = _dt.date.today().strftime("%B %Y")
     st.markdown(
         f'<div class="sa-meta">Prepared for {company} · {_audit_date} · Confidential</div>',
@@ -1273,7 +1282,7 @@ def screen_results():
             f"The weakest dimension is {weakest['name']} at {weakest['score']:.1f}. "
             f"The strongest is {strongest['name']} at {strongest['score']:.1f}."
             f"{top_risk_text}"
-            f" A 90-day focus plan follows below."
+            f" A 90-day focus plan follows below, starting with {weakest['name']}."
         )
         st.markdown(
             f'<div style="border-left:3px solid var(--accent);padding:14px 18px;margin:1.5rem 0;'
@@ -1317,10 +1326,10 @@ def screen_results():
               } catch(err) {}
             });
           });
-          // Make iframe sticky on mobile
+          // Make iframe sticky
           try {
             var fr = window.frameElement;
-            if (fr && window.innerWidth <= 600) {
+            if (fr) {
               var wrap = fr.closest('.element-container') || fr.parentElement;
               if (wrap) {
                 wrap.style.position = 'sticky';
@@ -1339,6 +1348,10 @@ def screen_results():
         height=36,
     )
     # --- Radar chart ---
+    st.markdown(
+        '<p style="font-size:0.85rem;color:var(--muted);margin:0.8rem 0 0.2rem">Larger shape = more structural strength. Uneven shapes reveal where to focus.</p>',
+        unsafe_allow_html=True,
+    )
     scored_for_radar = [d for d in r["dimensions"] if d["score"] is not None]
     if len(scored_for_radar) >= 3:
         import math as _math
@@ -1465,9 +1478,12 @@ def screen_results():
                     st.session_state.dim_idx = jump_idx
                     go("dim")
         else:
+            _dim_band = _band_for_score(d["score"])
+            _dim_band_label = _dim_band[1] if _dim_band else ""
             st.markdown(
                 f'<div class="sa-card"><div class="label">{d["name"]}</div>'
-                f'<div class="val">{d["score"]:.1f}<span class="ten">/ 100</span></div>'
+                f'<div class="val">{d["score"]:.1f}<span class="ten">/ 100</span>'
+                f'<span style="font-size:0.7rem;font-weight:400;color:var(--muted);margin-left:8px;letter-spacing:0.03em">{_dim_band_label}</span></div>'
                 f'{pct_bar(d["score"])}'
                 f'{bench_line}</div>',
                 unsafe_allow_html=True,
@@ -1658,14 +1674,6 @@ def screen_results():
         unsafe_allow_html=True,
     )
 
-    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
-    st.markdown("### If you have not taken the Index yet")
-    st.markdown(
-        "The Structural Advantage Index is the personal companion to this audit. Eleven minutes. An operator archetype. "
-        "The shape you bring to the work, named. Most operators find the two read differently when held side by side. "
-        "[Open the Index &rarr;](https://structuraladvantageindex.netlify.app/)"
-    )
-
     # --- Share summary (plain text for forwarding to team) ---
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     st.markdown('<div id="sa-share"></div>', unsafe_allow_html=True)
@@ -1677,7 +1685,7 @@ def screen_results():
         "Copy the summary below and send it. The audit is more useful when the people who need to act on it can see it."
     )
     _summary_lines = [
-        f"STRUCTURAL AUDIT — {company}",
+        f"STRUCTURAL AUDIT — {company} ({_audit_date})",
         f"Overall score: {r['overall']:.1f} / 100 ({band_label})",
         "",
     ]
@@ -1700,7 +1708,9 @@ def screen_results():
             _summary_lines.append(f"  {period} ({item['dim']}): {item['rec']}")
     _summary_lines.append("")
     _summary_lines.append(f"Take the audit: https://structural-audit.streamlit.app/")
-    _share_text = "\\n".join(_summary_lines)
+    _share_text = "\n".join(_summary_lines)
+    # Escape for safe embedding in JS — prevent injection from company names
+    _safe_share = json.dumps(_share_text)
     _components.html(
         f"""
         <style>
@@ -1713,7 +1723,7 @@ def screen_results():
         button:hover {{ background:#2A3758; }}
         .ok {{ color:#8B6A3F; font-size:12px; margin-left:8px; font-family:"Inter",system-ui,sans-serif; }}
         </style>
-        <button onclick="navigator.clipboard.writeText(`{_share_text}`).then(function(){{document.getElementById('share_ok').textContent='Copied. Paste into an email or message.'}})">
+        <button onclick="navigator.clipboard.writeText({_safe_share}).then(function(){{document.getElementById('share_ok').textContent='Copied. Paste into an email or message.'}})">
           Copy summary to clipboard
         </button><span id="share_ok" class="ok"></span>
         """,
@@ -1775,6 +1785,15 @@ def screen_results():
         </script>
         """,
         height=42,
+    )
+
+    # --- Index cross-sell ---
+    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+    st.markdown("### If you have not taken the Index yet")
+    st.markdown(
+        "The Structural Advantage Index is the personal companion to this audit. Eleven minutes. An operator archetype. "
+        "The shape you bring to the work, named. Most operators find the two read differently when held side by side. "
+        "[Open the Index &rarr;](https://structuraladvantageindex.netlify.app/)"
     )
 
     # --- Save code (visible, not buried) ---
