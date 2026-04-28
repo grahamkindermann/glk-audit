@@ -694,7 +694,7 @@ def back_dim():
 def mark():
     st.markdown(
         '<div class="sa-mark"><span class="dot"></span>'
-        '<span>The Structural Audit . A diagnostic of the company</span></div>',
+        '<span>The Structural Audit . A diagnostic of the company, not the founder</span></div>',
         unsafe_allow_html=True,
     )
 
@@ -877,12 +877,12 @@ def screen_intro():
     st.markdown("""
 The six dimensions, weighted by their structural impact on durability and enterprise value:
 
-1. **Personnel and Org.** Owner dependency, leadership depth, decision rights.
-2. **Accounting and Finance.** Cash visibility, margin clarity, close discipline.
+1. **Personnel & Org.** Owner dependency, leadership depth, decision rights.
+2. **Accounting & Finance.** Cash visibility, margin clarity, close discipline.
 3. **Software Stack.** Systems of record, integration, data hygiene.
 4. **AI Readiness.** Workflow maturity, data posture, leverage opportunity.
-5. **Sales and Marketing.** Pipeline health, unit economics, repeatability.
-6. **Operations.** Delivery reliability, process documentation, recovery.
+5. **Sales & Marketing.** Pipeline health, unit economics, repeatability.
+6. **Operations & Process.** Delivery reliability, process documentation, recovery.
 
 This is an honest tool. You will be asked things you do not want to answer. The value is in answering them anyway.
 """)
@@ -1216,8 +1216,13 @@ def screen_results():
     _save_to_localstorage()
     mark()
     r = compute_results()
-    st.markdown('<div class="sa-meta">Results . The structural audit</div>', unsafe_allow_html=True)
     company = st.session_state.company or "The Company"
+    import datetime as _dt
+    _audit_date = _dt.date.today().strftime("%B %Y")
+    st.markdown(
+        f'<div class="sa-meta">Prepared for {company} · {_audit_date} · Confidential</div>',
+        unsafe_allow_html=True,
+    )
     st.markdown(f"# {company}. Structural Audit.")
     if r["overall"] is None:
         st.warning("Not enough of the audit was completed to generate a score. Return and answer more questions.")
@@ -1556,9 +1561,9 @@ def screen_results():
                 unsafe_allow_html=True,
             )
         st.markdown(
-            '<div style="border-left:3px solid var(--accent);padding:10px 16px;margin:1rem 0 0.5rem;'
-            'font-family:Fraunces,Georgia,serif;font-size:1.05rem;color:var(--ink);line-height:1.45">'
-            'This is the plan. The call is where we pressure-test it.</div>',
+            '<p style="font-family:Fraunces,Georgia,serif;font-size:1.05rem;color:var(--ink);'
+            'line-height:1.45;margin:1.5rem 0 0.5rem;font-style:italic">'
+            'This is the plan. The call is where we pressure-test it.</p>',
             unsafe_allow_html=True,
         )
 
@@ -1568,9 +1573,9 @@ def screen_results():
     st.markdown('<div id="sa-followup"></div>', unsafe_allow_html=True)
     st.markdown("## Get the follow-up")
     st.markdown(
-        "Leave an email and we will send a short action plan for what to do with this score this week. "
-        "Which dimension to focus on first, how to assign the first fix, and who else at your company should see the results. "
-        "Two short emails over the next week. That is it."
+        "Leave an email and we will send two short emails over the next week. "
+        "**Email 1** (in two days): what to do this week with your audit, which dimension to focus first, and how to assign the first fix. "
+        "**Email 2** (in seven days): when the audit surfaces something bigger than a checklist can handle. That is it."
     )
     st.markdown(
         '<p style="font-size:0.88rem;color:var(--accent);margin:0 0 8px">'
@@ -1648,8 +1653,8 @@ def screen_results():
     st.markdown(
         '<p style="font-size:0.88rem;color:var(--muted);margin-top:0.8rem">'
         'Not ready for a call? <a href="https://structuraladvantage.substack.com/" '
-        'style="color:var(--accent)">Subscribe to Structural Advantage</a> for a weekly essay '
-        'on how operators build businesses that last.</p>',
+        'style="color:var(--accent)">Subscribe to Structural Advantage</a>, '
+        'the newsletter behind this audit.</p>',
         unsafe_allow_html=True,
     )
 
@@ -1665,9 +1670,11 @@ def screen_results():
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     st.markdown('<div id="sa-share"></div>', unsafe_allow_html=True)
     st.markdown("### Share with your team")
+    # Determine the weakest dimension name for the prompt
+    _weakest_name = weakest["name"] if scored_dims else "the weakest dimension"
     st.markdown(
-        "Copy a plain-text summary to send to a co-founder, CFO, or board member. "
-        "The audit is more useful when the people who need to act on it can see it."
+        f"Three people should see this: your CFO, your ops lead, and whoever owns {_weakest_name}. "
+        "Copy the summary below and send it. The audit is more useful when the people who need to act on it can see it."
     )
     _summary_lines = [
         f"STRUCTURAL AUDIT — {company}",
@@ -1713,10 +1720,67 @@ def screen_results():
         height=42,
     )
 
+    # --- Print / Save as PDF ---
+    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+    st.markdown("### Print or save as PDF")
+    st.markdown(
+        "Use your browser's print dialog to save a clean copy. "
+        "Works best from desktop."
+    )
+    _components.html(
+        """
+        <style>
+        body { margin:0; padding:0; background:transparent; }
+        button {
+          background:#14223D; color:#F4EFE6; border:none; padding:8px 18px;
+          font-family:"Inter",system-ui,sans-serif; font-size:13px; font-weight:500;
+          cursor:pointer; letter-spacing:0.02em;
+        }
+        button:hover { background:#2A3758; }
+        </style>
+        <button onclick="try{window.parent.print()}catch(e){window.top.print()}">
+          Print this page
+        </button>
+        <script>
+        // Inject print-friendly styles into the parent document
+        (function(){
+          try {
+            var pd = window.parent.document;
+            if (!pd._saPrintCSS) {
+              pd._saPrintCSS = true;
+              var s = pd.createElement('style');
+              s.textContent = [
+                '@media print {',
+                '  [data-testid="stSidebarCollapsedControl"], #MainMenu, footer,',
+                '  header[data-testid="stHeader"], [data-testid="manage-app-button"],',
+                '  .stAppDeployButton, [class*="viewerBadge"], [class*="StatusWidget"],',
+                '  [class*="stStatusWidget"], [data-testid="StatusWidget"],',
+                '  [class*="stAppStatus"] { display:none!important; }',
+                '  .stApp, html, body, [data-testid="stAppViewContainer"] {',
+                '    background: white !important;',
+                '  }',
+                '  section.main > div.block-container {',
+                '    max-width: 100% !important;',
+                '    padding: 0 !important;',
+                '  }',
+                '  iframe { display:none !important; }',
+                '  div.stButton, div.stLinkButton { display:none !important; }',
+                '  [data-testid="stExpander"] { display:none !important; }',
+                '}'
+              ].join('\\n');
+              pd.head.appendChild(s);
+            }
+          } catch(e) {}
+        })();
+        </script>
+        """,
+        height=42,
+    )
+
     # --- Save code (visible, not buried) ---
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     st.markdown("### Save your results")
-    st.markdown("Copy this code to resume your audit from any device, or to compare against a future audit.")
+    st.markdown("Copy your audit code below. Use it to resume from any device, or paste it into the comparison tool on a future audit to track your progress.")
     _results_code = _encode_state()
     st.code(_results_code, language=None)
     _components.html(
