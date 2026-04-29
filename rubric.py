@@ -93,8 +93,8 @@ BAND_NARRATIVE = {
 # ---------------------------------------------------------------------------
 # Dimensions
 #
-# Dimension weights are raw; scoring.py normalizes them to sum to 6.0 at
-# runtime. AI Readiness is deliberately thin (4 questions, weight 0.50).
+# Dimension weights are raw; app.py uses them as-is in a weighted average
+# at runtime. AI Readiness is deliberately thin (5 questions, weight 0.50).
 #
 # Question schema:
 #   {
@@ -102,15 +102,12 @@ BAND_NARRATIVE = {
 #       "text":             "...",
 #       "type":             "likert" | "yesno",
 #       "weight":           float,
-#       "reverse":          bool,   # see scoring.py header for rules
+#       "reverse":          bool,   # see app.py score_question() for rules
 #       "allow_na":         bool,
 #       "risk_copy":        "...",  # shown when question surfaces as a risk
-#       "opportunity_copy": "...",  # advisory mode only
-#       "recommendation":   "...",  # advisory mode only
+#       "opportunity_copy": "...",
+#       "recommendation":   "...",
 #   }
-#
-# "summary" fields per dimension are intentionally left empty for now; they
-# will be filled in after the scoring engine is locked.
 # ---------------------------------------------------------------------------
 DIMENSIONS = [
     {
@@ -767,7 +764,7 @@ DIMENSIONS = [
 # Industry Benchmarks
 #
 # Keyed by (industry, question_id). Each entry has p25/p50/p75 values.
-# Used by scoring.py to compute percentile-based scores for quantitative
+# Used by app.py to compute percentile-based scores for quantitative
 # questions. Values are reasonable estimates for v0.2; refine with real
 # data as it accumulates.
 #

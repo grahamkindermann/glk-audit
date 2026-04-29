@@ -1121,7 +1121,29 @@ def render_question(q):
             st.session_state.answers[qid] = "N/A"
         else:
             try:
-                st.session_state.answers[qid] = float(cleaned)
+                _num_val = float(cleaned)
+                st.session_state.answers[qid] = _num_val
+                # Inline benchmark feedback
+                if bench:
+                    _lower = q.get("lower_is_better", False)
+                    if _lower:
+                        if _num_val <= bench["p25"]:
+                            st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above 75th percentile for your industry.</p>', unsafe_allow_html=True)
+                        elif _num_val <= bench["p50"]:
+                            st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above industry median.</p>', unsafe_allow_html=True)
+                        elif _num_val <= bench["p75"]:
+                            st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">Below industry median.</p>', unsafe_allow_html=True)
+                        else:
+                            st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">Below 25th percentile for your industry.</p>', unsafe_allow_html=True)
+                    else:
+                        if _num_val >= bench["p75"]:
+                            st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above 75th percentile for your industry.</p>', unsafe_allow_html=True)
+                        elif _num_val >= bench["p50"]:
+                            st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above industry median.</p>', unsafe_allow_html=True)
+                        elif _num_val >= bench["p25"]:
+                            st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">Below industry median.</p>', unsafe_allow_html=True)
+                        else:
+                            st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">Below 25th percentile for your industry.</p>', unsafe_allow_html=True)
             except ValueError:
                 st.session_state.answers[qid] = "N/A"
                 st.caption("Could not parse as a number. Enter a plain numeric value (e.g. 15, 500000). This question will be skipped.")
@@ -1240,29 +1262,84 @@ def screen_results():
             go("dim")
         return
     band_id, band_label, band_narrative = r["band"]
+    # Band-specific accent color for dynamic theming across results
+    _BAND_ACCENT = {
+        "critical": "#7A2E20",
+        "fragile": "#B8872E",
+        "functional": "#5A6B3F",
+        "strong": "#2E6B5A",
+        "durable": "#14223D",
+    }
+    _band_color = _BAND_ACCENT.get(band_id, "var(--accent)")
     st.markdown(f'<div class="sa-band sa-band--{band_id}">{band_label}</div>', unsafe_allow_html=True)
     st.markdown(
         f'<div class="sa-card sa-score-hero"><div class="label">Overall structural score</div>'
-        f'<div class="val">{r["overall"]:.1f}<span class="ten">/ 100</span></div></div>',
+        f'<div class="val" id="sa-score-val">0.0<span class="ten">/ 100</span></div></div>',
         unsafe_allow_html=True,
+    )
+    # Animated count-up on score reveal
+    _components.html(
+        f"""<script>
+        (function(){{
+          try {{
+            var pd = window.parent.document;
+            var el = pd.getElementById('sa-score-val');
+            if (!el || el._saAnimated) return;
+            el._saAnimated = true;
+            var target = {r["overall"]:.1f};
+            var span = el.querySelector('.ten');
+            var dur = 1400;
+            var start = performance.now();
+            function tick(now) {{
+              var t = Math.min((now - start) / dur, 1);
+              t = 1 - Math.pow(1 - t, 3);
+              var v = (t * target).toFixed(1);
+              el.textContent = v;
+              if (span) el.appendChild(span);
+              if (t < 1) requestAnimationFrame(tick);
+            }}
+            requestAnimationFrame(tick);
+          }} catch(e) {{}}
+        }})();
+        </script>""",
+        height=0,
     )
     # Percentile ranking language
     _BAND_PERCENTILE = {
-        "critical": "bottom 15% of businesses at this revenue band",
-        "fragile": "lower third of businesses at this revenue band",
-        "functional": "middle of the pack for businesses at this revenue band",
-        "strong": "top quarter of businesses at this revenue band",
-        "durable": "top 10% of businesses at this revenue band",
+        "critical": "typically in the bottom 15% of businesses at this revenue band",
+        "fragile": "typically in the lower third of businesses at this revenue band",
+        "functional": "consistent with the middle of the pack at this revenue band",
+        "strong": "consistent with the top quarter of businesses at this revenue band",
+        "durable": "consistent with the top 10% of businesses at this revenue band",
     }
     _pctl_text = _BAND_PERCENTILE.get(band_id, "")
     if _pctl_text:
         st.markdown(
             f'<p style="font-size:1.05rem;color:var(--ink);margin:0.5rem 0 0.8rem">'
-            f'This places {company} in the <strong>{_pctl_text}</strong>.</p>',
+            f'This places {company} <strong>{_pctl_text}</strong>.</p>',
             unsafe_allow_html=True,
         )
     if band_narrative:
         st.markdown(f"<p>{band_narrative}</p>", unsafe_allow_html=True)
+
+    # Methodology explainer
+    with st.expander("How this was scored"):
+        st.markdown(
+            "The audit scores fifty questions across six weighted dimensions: "
+            "Personnel & Org, Accounting & Finance, Software Stack, AI Readiness, "
+            "Sales & Marketing, and Operations & Process. Qualitative questions "
+            "(Likert scale and yes/no) are scored directly. Quantitative questions "
+            "(metrics like turnover rate, days to close, CAC) are scored against "
+            "industry benchmarks at the 25th, 50th, and 75th percentile for your selected industry."
+        )
+        st.markdown(
+            "Each dimension requires at least 60% of its question weight to be answered "
+            "before it receives a score. Dimensions below that threshold are excluded from "
+            "the overall weighted average and marked as Insufficient Data. "
+            "The overall score is the weighted average of all scored dimensions, on a 0 to 100 scale. "
+            "Risks are the answered items with the lowest scores relative to their weight. "
+            "Opportunities are items that are partially in place but have room to improve."
+        )
 
     # Dynamic executive summary
     scored_dims = [d for d in r["dimensions"] if d["score"] is not None]
@@ -1277,72 +1354,86 @@ def screen_results():
                 f" The single highest-weighted risk sits in {top_risk_dim['name']}: "
                 f"<em>&ldquo;{top_risk_q['text']}&rdquo;</em>"
             )
+        # The 90-day plan starts from top risks, not necessarily the weakest dimension
+        _first_plan_dim = r["risks"][0][1]["name"] if r["risks"] else weakest["name"]
         exec_summary = (
             f"{company} scored {r['overall']:.1f}, placing it in the <strong>{band_label}</strong> band. "
             f"The weakest dimension is {weakest['name']} at {weakest['score']:.1f}. "
             f"The strongest is {strongest['name']} at {strongest['score']:.1f}."
             f"{top_risk_text}"
-            f" A 90-day focus plan follows below, starting with {weakest['name']}."
+            f" A 90-day focus plan follows below, starting with {_first_plan_dim}."
         )
         st.markdown(
-            f'<div style="border-left:3px solid var(--accent);padding:14px 18px;margin:1.5rem 0;'
+            f'<div style="border-left:3px solid {_band_color};padding:14px 18px;margin:1.5rem 0;'
             f'background:#FBF8F1;font-size:1.02rem;line-height:1.55;color:var(--ink-2)">'
             f'{exec_summary}</div>',
             unsafe_allow_html=True,
         )
 
+    # --- Pre-compute which optional sections will render ---
+    _has_opps = bool(r["opportunities"])
+    _has_plan = any(q.get("recommendation") for q, _, _ in r["risks"][:3]) or (
+        _has_opps and any(q.get("recommendation") for q, _, _ in r["opportunities"])
+    )
+
     # --- Table of contents (rendered via component iframe so JS works) ---
+    _toc_links = [
+        '<a href="#" data-target="sa-dimensions">Dimensions</a>',
+        '<a href="#" data-target="sa-risks">Risks</a>',
+    ]
+    if _has_opps:
+        _toc_links.append('<a href="#" data-target="sa-opportunities">Opportunities</a>')
+    if _has_plan:
+        _toc_links.append('<a href="#" data-target="sa-plan">90-Day Plan</a>')
+    _toc_links += [
+        '<a href="#" data-target="sa-followup">Get the follow-up</a>',
+        '<a href="#" data-target="sa-next">Next step</a>',
+        '<a href="#" data-target="sa-share">Share</a>',
+    ]
+    _toc_html = "\n          ".join(_toc_links)
     _components.html(
-        """
+        f"""
         <style>
-        body { margin:0; padding:0; background:transparent; }
-        .toc { display:flex; flex-wrap:wrap; gap:6px 18px; font-family:"Inter",system-ui,sans-serif; }
-        .toc a { font-size:14px; color:#8B6A3F; text-decoration:none; letter-spacing:0.02em; }
-        .toc a:hover { text-decoration:underline; }
-        @media(max-width:500px){
-          .toc { gap:5px 10px; }
-          .toc a { font-size:12px; }
-        }
+        body {{ margin:0; padding:0; background:transparent; }}
+        .toc {{ display:flex; flex-wrap:wrap; gap:6px 18px; font-family:"Inter",system-ui,sans-serif; }}
+        .toc a {{ font-size:14px; color:#8B6A3F; text-decoration:none; letter-spacing:0.02em; }}
+        .toc a:hover {{ text-decoration:underline; }}
+        @media(max-width:500px){{
+          .toc {{ gap:5px 10px; }}
+          .toc a {{ font-size:12px; }}
+        }}
         </style>
         <div class="toc">
-          <a href="#" data-target="sa-dimensions">Dimensions</a>
-          <a href="#" data-target="sa-risks">Risks</a>
-          <a href="#" data-target="sa-opportunities">Opportunities</a>
-          <a href="#" data-target="sa-plan">90-Day Plan</a>
-          <a href="#" data-target="sa-followup">Get the follow-up</a>
-          <a href="#" data-target="sa-next">Next step</a>
-          <a href="#" data-target="sa-share">Share</a>
+          {_toc_html}
         </div>
         <script>
-        (function(){
-          // Jump-link click handler
-          document.querySelectorAll('.toc a').forEach(function(a){
-            a.addEventListener('click', function(e){
+        (function(){{
+          document.querySelectorAll('.toc a').forEach(function(a){{
+            a.addEventListener('click', function(e){{
               e.preventDefault();
               var id = this.getAttribute('data-target');
-              try {
+              try {{
                 var el = window.parent.document.getElementById(id);
-                if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
-              } catch(err) {}
-            });
-          });
-          // Make iframe sticky
-          try {
+                if (el) el.scrollIntoView({{behavior:'smooth', block:'start'}});
+              }} catch(err) {{}}
+            }});
+          }});
+          try {{
             var fr = window.frameElement;
-            if (fr) {
+            if (fr) {{
               var wrap = fr.closest('.element-container') || fr.parentElement;
-              if (wrap) {
+              if (wrap) {{
                 wrap.style.position = 'sticky';
                 wrap.style.top = '0';
                 wrap.style.zIndex = '999';
-                wrap.style.background = '#FFFDF8';
+                wrap.style.background = '#F4EFE6';
                 wrap.style.paddingTop = '4px';
                 wrap.style.paddingBottom = '4px';
                 wrap.style.borderBottom = '1px solid #E8E0D0';
-              }
-            }
-          } catch(e) {}
-        })();
+              }}
+            }}
+          }} catch(e) {{}}
+        }})();
         </script>
         """,
         height=36,
@@ -1354,15 +1445,14 @@ def screen_results():
     )
     scored_for_radar = [d for d in r["dimensions"] if d["score"] is not None]
     if len(scored_for_radar) >= 3:
-        import math as _math
         _n = len(scored_for_radar)
         _cx, _cy, _R = 200, 200, 150
-        _angle_offset = -_math.pi / 2  # start at top
+        _angle_offset = -math.pi / 2  # start at top
 
         def _polar(i, pct):
-            a = _angle_offset + 2 * _math.pi * i / _n
+            a = _angle_offset + 2 * math.pi * i / _n
             r = _R * pct / 100.0
-            return _cx + r * _math.cos(a), _cy + r * _math.sin(a)
+            return _cx + r * math.cos(a), _cy + r * math.sin(a)
 
         # Grid lines at 25, 50, 75, 100
         _grid_svg = ""
@@ -1388,10 +1478,10 @@ def screen_results():
             _dots_svg += f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="#8B6A3F"/>\n'
             lx, ly = _polar(i, 115)
             # Compute text-anchor based on position
-            a = _angle_offset + 2 * _math.pi * i / _n
-            if abs(_math.cos(a)) < 0.15:
+            a = _angle_offset + 2 * math.pi * i / _n
+            if abs(math.cos(a)) < 0.15:
                 anchor = "middle"
-            elif _math.cos(a) > 0:
+            elif math.cos(a) > 0:
                 anchor = "start"
             else:
                 anchor = "end"
@@ -1420,7 +1510,8 @@ def screen_results():
         </div>
         """
         _components.html(
-            f'<div style="background:transparent;margin:0;padding:0">{_radar_html}</div>',
+            f'<div style="background:transparent;margin:0;padding:0">{_radar_html}</div>'
+            '<script>try{var f=window.frameElement;if(f)f.classList.add("sa-radar-iframe")}catch(e){}</script>',
             height=380,
         )
 
@@ -1480,11 +1571,36 @@ def screen_results():
         else:
             _dim_band = _band_for_score(d["score"])
             _dim_band_label = _dim_band[1] if _dim_band else ""
+            # Heat-strip: one cell per question colored by individual score
+            _heat_cells = []
+            for q in dim_def["questions"]:
+                ans = answers.get(q["id"])
+                qs, flagged = score_question(q, ans, industry)
+                if not flagged or qs is None:
+                    _heat_cells.append('<span style="display:inline-block;width:100%;height:6px;background:var(--hair)"></span>')
+                elif qs >= 0.75:
+                    _heat_cells.append('<span style="display:inline-block;width:100%;height:6px;background:#5A6B3F"></span>')
+                elif qs >= 0.4:
+                    _heat_cells.append('<span style="display:inline-block;width:100%;height:6px;background:#B8872E"></span>')
+                else:
+                    _heat_cells.append('<span style="display:inline-block;width:100%;height:6px;background:#7A2E20"></span>')
+            _n_cells = len(_heat_cells)
+            _heat_strip = (
+                f'<div style="display:grid;grid-template-columns:repeat({_n_cells},1fr);gap:2px;margin:6px 0 4px">'
+                + "".join(_heat_cells)
+                + '</div>'
+                + '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:2px">Per-question breakdown: '
+                + '<span style="color:#5A6B3F">strong</span> · '
+                + '<span style="color:#B8872E">partial</span> · '
+                + '<span style="color:#7A2E20">gap</span> · '
+                + '<span style="color:var(--hair)">skipped</span></div>'
+            )
             st.markdown(
                 f'<div class="sa-card"><div class="label">{d["name"]}</div>'
                 f'<div class="val">{d["score"]:.1f}<span class="ten">/ 100</span>'
                 f'<span style="font-size:0.7rem;font-weight:400;color:var(--muted);margin-left:8px;letter-spacing:0.03em">{_dim_band_label}</span></div>'
                 f'{pct_bar(d["score"])}'
+                f'{_heat_strip}'
                 f'{bench_line}</div>',
                 unsafe_allow_html=True,
             )
@@ -1568,10 +1684,10 @@ def screen_results():
             period = _periods[i] if i < len(_periods) else f"Days {i*30+1}–{(i+1)*30}"
             plabel = _period_labels[i] if i < len(_period_labels) else ""
             st.markdown(
-                f'<div class="sa-card" style="border-left:3px solid var(--accent)">'
+                f'<div class="sa-card" style="border-left:3px solid {_band_color}">'
                 f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">'
                 f'<span style="font-family:Fraunces,serif;font-size:1.1rem;color:var(--ink)">{period}</span>'
-                f'<span style="font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent)">{plabel}</span></div>'
+                f'<span style="font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:{_band_color}">{plabel}</span></div>'
                 f'<div style="font-size:0.82rem;color:var(--muted);margin-bottom:4px">{item["dim"]}</div>'
                 f'<div style="font-size:0.97rem;color:var(--ink-2)">{item["rec"]}</div></div>',
                 unsafe_allow_html=True,
@@ -1589,9 +1705,10 @@ def screen_results():
     st.markdown('<div id="sa-followup"></div>', unsafe_allow_html=True)
     st.markdown("## Get the follow-up")
     st.markdown(
-        "Leave an email and we will send two short emails over the next week. "
-        "**Email 1** (in two days): what to do this week with your audit, which dimension to focus first, and how to assign the first fix. "
-        "**Email 2** (in seven days): when the audit surfaces something bigger than a checklist can handle. That is it."
+        "Leave an email and we will send three short emails over the next ten days. "
+        "**Email 1** (day 2): what to do this week with your audit, which dimension to focus first, and how to assign the first fix. "
+        "**Email 2** (day 5): how to read the risks and opportunities section and turn it into a meeting agenda. "
+        "**Email 3** (day 10): when the audit surfaces something bigger than a checklist can handle. That is it."
     )
     st.markdown(
         '<p style="font-size:0.88rem;color:var(--accent);margin:0 0 8px">'
@@ -1773,7 +1890,7 @@ def screen_results():
                 '    max-width: 100% !important;',
                 '    padding: 0 !important;',
                 '  }',
-                '  iframe { display:none !important; }',
+                '  iframe:not(.sa-radar-iframe) { display:none !important; }',
                 '  div.stButton, div.stLinkButton { display:none !important; }',
                 '  [data-testid="stExpander"] { display:none !important; }',
                 '}'
