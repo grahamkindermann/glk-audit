@@ -69,7 +69,7 @@ INSUFFICIENT_DATA_LABEL = "Insufficient Data"
 # ---------------------------------------------------------------------------
 BAND_NARRATIVE = {
     "critical": (
-        "Your business is structurally fragile across multiple dimensions. "
+        "Your business is structurally exposed across multiple dimensions. "
         "Without intervention, the next shock will expose gaps that could threaten continuity."
     ),
     "fragile": (

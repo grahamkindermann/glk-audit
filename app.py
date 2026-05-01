@@ -385,82 +385,7 @@ div.stButton.sa-link > button:hover * {
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
-# Hide Streamlit Community Cloud chrome (Manage App button, footer, header).
-# st.markdown CSS is scoped inside the app container and can't reach Cloud-
-# injected elements, so we use an iframe to inject a <style> tag directly
-# into the parent document's <head>.
 import streamlit.components.v1 as _components
-
-_components.html(
-    """<script>
-    (function(){
-      var css = [
-        '[data-testid="manage-app-button"] { display:none!important; }',
-        '.stAppDeployButton { display:none!important; }',
-        '#MainMenu { visibility:hidden!important; }',
-        'footer { visibility:hidden!important; }',
-        'header[data-testid="stHeader"] { visibility:hidden!important; }',
-        '[data-testid="stSidebarCollapsedControl"] { display:none!important; }',
-        '.viewerBadge_container__r5tak { display:none!important; }',
-        '[class*="viewerBadge"] { display:none!important; }',
-        '[class*="StatusWidget"] { display:none!important; }',
-        '[class*="stStatusWidget"] { display:none!important; }',
-        '[data-testid="StatusWidget"] { display:none!important; }',
-        '[class*="stAppStatus"] { display:none!important; }',
-        'a[href*="streamlit.io"] img { display:none!important; }',
-        'a[href*="streamlit.io/cloud"] { display:none!important; }'
-      ].join('\\n');
-      // Inject into every ancestor frame (app iframe + Cloud shell)
-      var w = window;
-      while (w) {
-        try {
-          var d = w.document;
-          if (d && d.head && !d._saChromeHidden) {
-            d._saChromeHidden = true;
-            var s = d.createElement('style');
-            s.textContent = css;
-            d.head.appendChild(s);
-          }
-        } catch(e) { break; }
-        if (w === w.parent) break;
-        w = w.parent;
-      }
-      // Nuclear: hide any small fixed/absolute element in bottom-right corner
-      function hideCornerJunk(doc) {
-        try {
-          var all = doc.querySelectorAll('*');
-          var vw = doc.defaultView.innerWidth;
-          var vh = doc.defaultView.innerHeight;
-          for (var el of all) {
-            var st = doc.defaultView.getComputedStyle(el);
-            if (st.position !== 'fixed' && st.position !== 'absolute') continue;
-            var r = el.getBoundingClientRect();
-            if (r.width > 0 && r.width < 300 && r.height > 0 && r.height < 200 &&
-                r.right > vw - 200 && r.bottom > vh - 100) {
-              el.style.setProperty('display', 'none', 'important');
-            }
-          }
-        } catch(e) {}
-      }
-      // Run now and again after a delay (elements may load late)
-      var w2 = window;
-      while (w2) {
-        try { hideCornerJunk(w2.document); } catch(e) { break; }
-        if (w2 === w2.parent) break;
-        w2 = w2.parent;
-      }
-      setTimeout(function(){
-        var w3 = window;
-        while (w3) {
-          try { hideCornerJunk(w3.document); } catch(e) { break; }
-          if (w3 === w3.parent) break;
-          w3 = w3.parent;
-        }
-      }, 3000);
-    })();
-    </script>""",
-    height=0,
-)
 
 # Scroll to top on every page transition.
 # st.markdown strips <script> tags, so we use st.components.v1.html() which
@@ -482,7 +407,14 @@ def _install_parent_js(scroll=True, beforeunload=True, buttons=True, hide_chrome
               'footer { visibility:hidden!important; }',
               'header[data-testid="stHeader"] { visibility:hidden!important; }',
               '[data-testid="stSidebarCollapsedControl"] { display:none!important; }',
-              '.viewerBadge_container__r5tak { display:none!important; }'
+              '.viewerBadge_container__r5tak { display:none!important; }',
+              '[class*="viewerBadge"] { display:none!important; }',
+              '[class*="StatusWidget"] { display:none!important; }',
+              '[class*="stStatusWidget"] { display:none!important; }',
+              '[data-testid="StatusWidget"] { display:none!important; }',
+              '[class*="stAppStatus"] { display:none!important; }',
+              'a[href*="streamlit.io"] img { display:none!important; }',
+              'a[href*="streamlit.io/cloud"] { display:none!important; }'
             ].join('\\n');
             var w = window;
             while (w) {
@@ -498,6 +430,37 @@ def _install_parent_js(scroll=True, beforeunload=True, buttons=True, hide_chrome
               if (w === w.parent) break;
               w = w.parent;
             }
+            // Nuclear: hide any small fixed/absolute element in bottom-right corner
+            function hideCornerJunk(doc) {
+              try {
+                var all = doc.querySelectorAll('*');
+                var vw = doc.defaultView.innerWidth;
+                var vh = doc.defaultView.innerHeight;
+                for (var el of all) {
+                  var cst = doc.defaultView.getComputedStyle(el);
+                  if (cst.position !== 'fixed' && cst.position !== 'absolute') continue;
+                  var r = el.getBoundingClientRect();
+                  if (r.width > 0 && r.width < 300 && r.height > 0 && r.height < 200 &&
+                      r.right > vw - 200 && r.bottom > vh - 100) {
+                    el.style.setProperty('display', 'none', 'important');
+                  }
+                }
+              } catch(e) {}
+            }
+            var w2 = window;
+            while (w2) {
+              try { hideCornerJunk(w2.document); } catch(e) { break; }
+              if (w2 === w2.parent) break;
+              w2 = w2.parent;
+            }
+            setTimeout(function(){
+              var w3 = window;
+              while (w3) {
+                try { hideCornerJunk(w3.document); } catch(e) { break; }
+                if (w3 === w3.parent) break;
+                w3 = w3.parent;
+              }
+            }, 3000);
           })();""")
     if scroll:
         parts.append("""
@@ -859,6 +822,7 @@ def _capture_email(email: str, company: str, band: str, score: float):
 # Screens
 # ---------------------------------------------------------------------------
 def screen_intro():
+    _install_parent_js(scroll=False, beforeunload=False, buttons=False, hide_chrome=True)
     mark()
     st.markdown('<div class="sa-meta">For the company . Fifteen to twenty minutes . Six dimensions . Mostly quick ratings</div>', unsafe_allow_html=True)
     st.markdown("# An operator's diagnostic of the business itself.")
@@ -1099,7 +1063,7 @@ def render_question(q):
         if bench:
             placeholder = f"e.g. {bench['p50']}"
         val = st.text_input(
-            q["text"] + (" (numeric value, blank to skip)" if not bench else ""),
+            q["text"] + " (blank to skip)",
             value="" if current in (None, "N/A") else str(current),
             key=f"num_{qid}",
             placeholder=placeholder,
@@ -1118,10 +1082,13 @@ def render_question(q):
             _fmt = lambda v: f"${v:,.0f}" if qid == "sal_q_cac" else f"{v:g}{_u}"
             st.caption(f"Industry benchmark: 25th: {_fmt(bench['p25'])} · Median: {_fmt(bench['p50'])} · 75th: {_fmt(bench['p75'])}")
         cleaned = val.strip().replace(",", "").replace("$", "").replace("%", "").replace("~", "")
-        # Handle k/K suffix: multiply by 1000 instead of string replace
+        # Handle k/K and m/M suffixes for thousands and millions
         _k_match = re.match(r'^([0-9]*\.?[0-9]+)[kK]$', cleaned)
+        _m_match = re.match(r'^([0-9]*\.?[0-9]+)[mM]$', cleaned)
         if _k_match:
             cleaned = str(float(_k_match.group(1)) * 1000)
+        elif _m_match:
+            cleaned = str(float(_m_match.group(1)) * 1000000)
         if cleaned == "":
             st.session_state.answers[qid] = "N/A"
         else:
@@ -1293,9 +1260,9 @@ def screen_results():
           try {{
             var pd = window.parent.document;
             var el = pd.getElementById('sa-score-val');
-            if (!el || el._saAnimated) return;
-            el._saAnimated = true;
             var target = {r["overall"]:.1f};
+            if (!el || el._saAnimatedFor === target) return;
+            el._saAnimatedFor = target;
             var span = el.querySelector('.ten');
             var dur = 1400;
             var start = performance.now();
@@ -1826,7 +1793,9 @@ def screen_results():
     _summary_lines.append("")
     for d in r["dimensions"]:
         if d["score"] is not None:
-            _summary_lines.append(f"  {d['name']}: {d['score']:.1f}")
+            _db = _band_for_score(d["score"])
+            _db_label = f" ({_db[1]})" if _db else ""
+            _summary_lines.append(f"  {d['name']}: {d['score']:.1f}{_db_label}")
         else:
             _summary_lines.append(f"  {d['name']}: Insufficient Data")
     if r["risks"]:
@@ -1890,7 +1859,8 @@ def screen_results():
         // Inject print-friendly styles into the parent document
         (function(){
           try {
-            var pd = window.parent.document;
+            var pw = window.parent;
+            var pd = pw.document;
             if (!pd._saPrintCSS) {
               pd._saPrintCSS = true;
               var s = pd.createElement('style');
@@ -1911,7 +1881,6 @@ def screen_results():
                 '  iframe:not(.sa-radar-iframe) { display:none !important; }',
                 '  div.stButton, div.stLinkButton { display:none !important; }',
                 '  [data-testid="stExpander"].sa-print-hide { display:none !important; }',
-                '  [data-testid="stExpander"] details { open:true; }',
                 '  [data-testid="stExpander"] details[open] > summary { display:none !important; }',
                 '}'
               ].join('\\n');
@@ -2064,6 +2033,13 @@ def screen_results():
                     if k in st.session_state:
                         del st.session_state[k]
                 _init()
+                # Clear localStorage so stale resume prompt doesn't appear on return
+                _components.html(
+                    """<script>
+                    try { window.parent.localStorage.removeItem('sa_audit_state'); } catch(e) {}
+                    </script>""",
+                    height=0,
+                )
                 st.rerun()
         with c2:
             if st.button("Cancel", key="confirm_no"):
