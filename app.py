@@ -30,6 +30,7 @@ from rubric import (
     INSUFFICIENT_DATA_LABEL,
     BRAND,
     CTA,
+    RUBRIC_VERSION,
 )
 
 # ---------------------------------------------------------------------------
@@ -332,22 +333,6 @@ div.stButton.sa-link > button:hover * {
   color: var(--accent-2) !important;
 }
 
-/* --- Results TOC nav --- */
-.sa-toc {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin: 1rem 0 0.5rem;
-}
-.sa-toc a {
-  font-family: "Inter", sans-serif;
-  font-size: 0.88rem;
-  color: var(--accent) !important;
-  text-decoration: none;
-  letter-spacing: 0.02em;
-}
-.sa-toc a:hover { text-decoration: underline; }
-
 /* --- Responsive: tablet ≤768px --- */
 @media (max-width: 768px) {
   section.main > div.block-container {
@@ -395,8 +380,6 @@ div.stButton.sa-link > button:hover * {
     padding: 10px 14px !important;
     font-size: 13px !important;
   }
-  .sa-toc { gap: 6px 12px; }
-  .sa-toc a { font-size: 0.82rem; }
 }
 </style>
 """
@@ -544,12 +527,19 @@ def _install_parent_js(scroll=True, beforeunload=True, buttons=True, hide_chrome
           }""")
     if beforeunload:
         parts.append("""
-          if (!pw._saUnloadInstalled) {
-            pw._saUnloadInstalled = true;
-            pw.addEventListener('beforeunload', function(e) {
+          if (!pw._saUnloadHandler) {
+            pw._saUnloadHandler = function(e) {
               e.preventDefault();
               e.returnValue = '';
-            });
+            };
+            pw.addEventListener('beforeunload', pw._saUnloadHandler);
+          }""")
+    else:
+        # Remove the handler if it was previously installed
+        parts.append("""
+          if (pw._saUnloadHandler) {
+            pw.removeEventListener('beforeunload', pw._saUnloadHandler);
+            pw._saUnloadHandler = null;
           }""")
     if buttons:
         parts.append("""
@@ -931,7 +921,7 @@ This is an honest tool. You will be asked things you do not want to answer. The 
                 st.rerun()
             else:
                 st.error("Invalid code. Please check and try again.")
-        # Auto-detect localStorage and show a hint if a saved audit exists
+        # Auto-detect localStorage and offer one-click restore
         _components.html(
             """
             <script>
@@ -939,8 +929,23 @@ This is an honest tool. You will be asked things you do not want to answer. The 
               try {
                 var saved = window.parent.localStorage.getItem('sa_audit_state');
                 if (saved) {
-                  // Show a hint above the expander
                   var pd = window.parent.document;
+                  // Find the resume text input and fill it
+                  var inputs = pd.querySelectorAll('input[type="text"]');
+                  var resumeInput = null;
+                  for (var i = 0; i < inputs.length; i++) {
+                    if (inputs[i].placeholder && inputs[i].placeholder.indexOf('save code') !== -1) {
+                      resumeInput = inputs[i];
+                      break;
+                    }
+                  }
+                  if (resumeInput && !resumeInput.value) {
+                    // Set the value via React's internal setter so Streamlit picks it up
+                    var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                    nativeSetter.call(resumeInput, saved);
+                    resumeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                  }
+                  // Show a hint above the expander
                   var expanders = pd.querySelectorAll('[data-testid="stExpander"]');
                   if (expanders.length > 0) {
                     var exp = expanders[expanders.length - 1];
@@ -948,7 +953,7 @@ This is an honest tool. You will be asked things you do not want to answer. The 
                       pd._saResumeHint = true;
                       var hint = pd.createElement('div');
                       hint.style.cssText = 'font-family:Inter,sans-serif;font-size:0.88rem;color:#8B6A3F;margin:0 0 6px;padding:8px 12px;background:#FBF8F1;border:1px solid #D9CFBC';
-                      hint.textContent = 'You have an audit in progress in this browser. Open the panel below to resume.';
+                      hint.textContent = 'You have an audit in progress in this browser. Open the panel below and click Resume to pick up where you left off.';
                       exp.parentElement.insertBefore(hint, exp);
                     }
                   }
@@ -1122,28 +1127,32 @@ def render_question(q):
         else:
             try:
                 _num_val = float(cleaned)
-                st.session_state.answers[qid] = _num_val
-                # Inline benchmark feedback
-                if bench:
-                    _lower = q.get("lower_is_better", False)
-                    if _lower:
-                        if _num_val <= bench["p25"]:
-                            st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above 75th percentile for your industry.</p>', unsafe_allow_html=True)
-                        elif _num_val <= bench["p50"]:
-                            st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above industry median.</p>', unsafe_allow_html=True)
-                        elif _num_val <= bench["p75"]:
-                            st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">Below industry median.</p>', unsafe_allow_html=True)
+                if _num_val < 0:
+                    st.session_state.answers[qid] = "N/A"
+                    st.caption("Value must be zero or positive. This question will be skipped.")
+                else:
+                    st.session_state.answers[qid] = _num_val
+                    # Inline benchmark feedback
+                    if bench:
+                        _lower = q.get("lower_is_better", False)
+                        if _lower:
+                            if _num_val <= bench["p25"]:
+                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above 75th percentile for your industry.</p>', unsafe_allow_html=True)
+                            elif _num_val <= bench["p50"]:
+                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above industry median.</p>', unsafe_allow_html=True)
+                            elif _num_val <= bench["p75"]:
+                                st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">Below industry median.</p>', unsafe_allow_html=True)
+                            else:
+                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">Below 25th percentile for your industry.</p>', unsafe_allow_html=True)
                         else:
-                            st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">Below 25th percentile for your industry.</p>', unsafe_allow_html=True)
-                    else:
-                        if _num_val >= bench["p75"]:
-                            st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above 75th percentile for your industry.</p>', unsafe_allow_html=True)
-                        elif _num_val >= bench["p50"]:
-                            st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above industry median.</p>', unsafe_allow_html=True)
-                        elif _num_val >= bench["p25"]:
-                            st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">Below industry median.</p>', unsafe_allow_html=True)
-                        else:
-                            st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">Below 25th percentile for your industry.</p>', unsafe_allow_html=True)
+                            if _num_val >= bench["p75"]:
+                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above 75th percentile for your industry.</p>', unsafe_allow_html=True)
+                            elif _num_val >= bench["p50"]:
+                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above industry median.</p>', unsafe_allow_html=True)
+                            elif _num_val >= bench["p25"]:
+                                st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">Below industry median.</p>', unsafe_allow_html=True)
+                            else:
+                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">Below 25th percentile for your industry.</p>', unsafe_allow_html=True)
             except ValueError:
                 st.session_state.answers[qid] = "N/A"
                 st.caption("Could not parse as a number. Enter a plain numeric value (e.g. 15, 500000). This question will be skipped.")
@@ -1249,7 +1258,7 @@ def screen_results():
     mark()
     r = compute_results()
     company = st.session_state.company or "The Company"
-    _audit_date = _dt.date.today().strftime("%B %Y")
+    _audit_date = _dt.date.today().strftime("%B %-d, %Y")
     st.markdown(
         f'<div class="sa-meta">Prepared for {company} · {_audit_date} · Confidential</div>',
         unsafe_allow_html=True,
@@ -1340,6 +1349,10 @@ def screen_results():
             "Risks are the answered items with the lowest scores relative to their weight. "
             "Opportunities are items that are partially in place but have room to improve."
         )
+        st.markdown(
+            f'<p style="font-size:0.82rem;color:var(--muted);margin-top:8px">Rubric version {RUBRIC_VERSION}</p>',
+            unsafe_allow_html=True,
+        )
 
     # Dynamic executive summary
     scored_dims = [d for d in r["dimensions"] if d["score"] is not None]
@@ -1421,6 +1434,9 @@ def screen_results():
           try {{
             var fr = window.frameElement;
             if (fr) {{
+              // Auto-size iframe to content height (handles link wrapping on mobile)
+              var h = document.body.scrollHeight;
+              if (h > 0) fr.style.height = h + 'px';
               var wrap = fr.closest('.element-container') || fr.parentElement;
               if (wrap) {{
                 wrap.style.position = 'sticky';
@@ -1436,7 +1452,7 @@ def screen_results():
         }})();
         </script>
         """,
-        height=36,
+        height=56,
     )
     # --- Radar chart ---
     st.markdown(
@@ -1804,8 +1820,10 @@ def screen_results():
     _summary_lines = [
         f"STRUCTURAL AUDIT — {company} ({_audit_date})",
         f"Overall score: {r['overall']:.1f} / 100 ({band_label})",
-        "",
     ]
+    if band_narrative:
+        _summary_lines.append(f"\n{band_narrative}")
+    _summary_lines.append("")
     for d in r["dimensions"]:
         if d["score"] is not None:
             _summary_lines.append(f"  {d['name']}: {d['score']:.1f}")
@@ -1892,10 +1910,31 @@ def screen_results():
                 '  }',
                 '  iframe:not(.sa-radar-iframe) { display:none !important; }',
                 '  div.stButton, div.stLinkButton { display:none !important; }',
-                '  [data-testid="stExpander"] { display:none !important; }',
+                '  [data-testid="stExpander"].sa-print-hide { display:none !important; }',
+                '  [data-testid="stExpander"] details { open:true; }',
+                '  [data-testid="stExpander"] details[open] > summary { display:none !important; }',
                 '}'
               ].join('\\n');
               pd.head.appendChild(s);
+              // Before print: expand methodology, hide interactive expanders
+              pw.addEventListener('beforeprint', function() {
+                var exps = pd.querySelectorAll('[data-testid="stExpander"]');
+                exps.forEach(function(exp) {
+                  var summary = exp.querySelector('summary span, details summary');
+                  var text = (exp.textContent || '').substring(0, 80).toLowerCase();
+                  if (text.indexOf('how this was scored') !== -1) {
+                    var details = exp.querySelector('details');
+                    if (details) details.setAttribute('open', '');
+                  } else {
+                    exp.classList.add('sa-print-hide');
+                  }
+                });
+              });
+              pw.addEventListener('afterprint', function() {
+                pd.querySelectorAll('.sa-print-hide').forEach(function(el) {
+                  el.classList.remove('sa-print-hide');
+                });
+              });
             }
           } catch(e) {}
         })();
