@@ -51,7 +51,7 @@ _SOCIAL_META = """
 <meta property="og:url" content="https://structural-audit.streamlit.app/" />
 <meta name="twitter:card" content="summary" />
 <meta name="twitter:title" content="The Structural Audit" />
-<meta name="twitter:description" content="A B2B operational diagnostic across six dimensions. Free." />
+<meta name="twitter:description" content="Fifty questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
 """
 st.markdown(_SOCIAL_META, unsafe_allow_html=True)
 
@@ -844,7 +844,7 @@ The six dimensions, weighted by their structural impact on durability and enterp
 1. **Personnel & Org.** Owner dependency, leadership depth, decision rights.
 2. **Accounting & Finance.** Cash visibility, margin clarity, close discipline.
 3. **Software Stack.** Systems of record, integration, data hygiene.
-4. **AI Readiness.** Workflow maturity, data posture, leverage opportunity.
+4. **AI Readiness.** Production adoption, team fluency, governance.
 5. **Sales & Marketing.** Pipeline health, unit economics, repeatability.
 6. **Operations & Process.** Delivery reliability, process documentation, recovery.
 
@@ -1297,6 +1297,18 @@ def screen_results():
         )
     if band_narrative:
         st.markdown(f"<p>{band_narrative}</p>", unsafe_allow_html=True)
+    # Distance to next band (motivational nudge)
+    if band_id != "durable":
+        _NEXT_BAND = {"critical": ("Fragile", 41), "fragile": ("Functional", 61),
+                      "functional": ("Strong", 76), "strong": ("Durable", 91)}
+        _nb = _NEXT_BAND.get(band_id)
+        if _nb:
+            _gap = _nb[1] - r["overall"]
+            st.markdown(
+                f'<p style="font-size:0.95rem;color:var(--accent);margin:0 0 0.8rem">'
+                f'{_gap:.1f} points from {_nb[0]}.</p>',
+                unsafe_allow_html=True,
+            )
 
     # Methodology explainer
     with st.expander("How this was scored"):
@@ -1315,6 +1327,14 @@ def screen_results():
             "The overall score is the weighted average of all scored dimensions, on a 0 to 100 scale. "
             "Risks are the answered items with the lowest scores relative to their weight. "
             "Opportunities are items that are partially in place but have room to improve."
+        )
+        st.markdown(
+            "**Band thresholds:** "
+            "Critical (0–40), "
+            "Fragile (41–60), "
+            "Functional (61–75), "
+            "Strong (76–90), "
+            "Durable (91–100)."
         )
         st.markdown(
             f'<p style="font-size:0.82rem;color:var(--muted);margin-top:8px">Rubric version {RUBRIC_VERSION}</p>',
@@ -1811,6 +1831,7 @@ def screen_results():
             period = _periods[i] if i < len(_periods) else f"Days {i*30+1}-{(i+1)*30}"
             _summary_lines.append(f"  {period} ({item['dim']}): {item['rec']}")
     _summary_lines.append("")
+    _summary_lines.append(f"Book a 30-min structural review: https://calendly.com/gkholdingsllcva/advisory-intro")
     _summary_lines.append(f"Take the audit: https://structural-audit.streamlit.app/")
     _share_text = "\n".join(_summary_lines)
     # Escape for safe embedding in JS — prevent injection from company names
@@ -1882,6 +1903,7 @@ def screen_results():
                 '  div.stButton, div.stLinkButton { display:none !important; }',
                 '  [data-testid="stExpander"].sa-print-hide { display:none !important; }',
                 '  [data-testid="stExpander"] details[open] > summary { display:none !important; }',
+                '  .sa-print-footer { display:block !important; }',
                 '}'
               ].join('\\n');
               pd.head.appendChild(s);
@@ -2016,6 +2038,14 @@ def screen_results():
         </div>
         """,
         height=32,
+    )
+    # Print-only attribution footer (hidden on screen, visible on print)
+    st.markdown(
+        '<div class="sa-print-footer" style="display:none;margin-top:2rem;padding-top:1rem;'
+        'border-top:1px solid #D9CFBC;font-size:0.8rem;color:#6B6659;text-align:center">'
+        'The Structural Audit &middot; structural-audit.streamlit.app &middot; '
+        'Graham Kindermann &middot; GLK Holdings LLC</div>',
+        unsafe_allow_html=True,
     )
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     if st.button("Start a new audit"):

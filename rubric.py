@@ -682,7 +682,7 @@ DIMENSIONS = [
                 "allow_na": True,
                 "risk_copy": "Operating without a bottleneck hypothesis means every improvement is a guess.",
                 "opportunity_copy": "Correctly identifying and fixing the bottleneck is the single highest-ROI operations move available.",
-                "recommendation": "Walk your core process end to end and identify where work waits, that's the bottleneck.",
+                "recommendation": "Walk your core process end to end and identify where work waits; that is the bottleneck.",
             },
             {
                 "id": "ops_04",
