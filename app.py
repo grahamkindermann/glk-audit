@@ -870,6 +870,8 @@ This is an honest tool. You will be asked things you do not want to answer. The 
 - Mean time to resolve customer issues (hours)
 """)
     if st.button("Begin the audit", use_container_width=False):
+        import time as _time
+        st.session_state["_audit_start"] = _time.time()
         go("context")
 
     # --- Resume previous audit ---
@@ -1104,22 +1106,22 @@ def render_question(q):
                         _lower = q.get("lower_is_better", False)
                         if _lower:
                             if _num_val <= bench["p25"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above 75th percentile for your industry.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Better than 75% of peers in your industry.</p>', unsafe_allow_html=True)
                             elif _num_val <= bench["p50"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above industry median.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Better than the industry median.</p>', unsafe_allow_html=True)
                             elif _num_val <= bench["p75"]:
                                 st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">Below industry median.</p>', unsafe_allow_html=True)
                             else:
-                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">Below 25th percentile for your industry.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">Below 75% of peers in your industry.</p>', unsafe_allow_html=True)
                         else:
                             if _num_val >= bench["p75"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above 75th percentile for your industry.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Better than 75% of peers in your industry.</p>', unsafe_allow_html=True)
                             elif _num_val >= bench["p50"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Above industry median.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Better than the industry median.</p>', unsafe_allow_html=True)
                             elif _num_val >= bench["p25"]:
                                 st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">Below industry median.</p>', unsafe_allow_html=True)
                             else:
-                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">Below 25th percentile for your industry.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">Below 75% of peers in your industry.</p>', unsafe_allow_html=True)
             except ValueError:
                 st.session_state.answers[qid] = "N/A"
                 st.caption("Could not parse as a number. Enter a plain numeric value (e.g. 15, 500000). This question will be skipped.")
@@ -1226,8 +1228,16 @@ def screen_results():
     r = compute_results()
     company = st.session_state.company or "The Company"
     _audit_date = _dt.date.today().strftime("%B %-d, %Y")
+    # Time-spent calculation
+    import time as _time
+    _start = st.session_state.get("_audit_start")
+    _elapsed_str = ""
+    if _start:
+        _elapsed_min = int((_time.time() - _start) / 60)
+        if _elapsed_min >= 1:
+            _elapsed_str = f" · Completed in {_elapsed_min} minute{'s' if _elapsed_min != 1 else ''}"
     st.markdown(
-        f'<div class="sa-meta">Prepared for {company} · {_audit_date} · Confidential</div>',
+        f'<div class="sa-meta">Prepared for {company} · {_audit_date}{_elapsed_str} · Confidential</div>',
         unsafe_allow_html=True,
     )
     st.markdown(f"# {company}. Structural Audit.")
@@ -1429,7 +1439,8 @@ def screen_results():
                 wrap.style.position = 'sticky';
                 wrap.style.top = '0';
                 wrap.style.zIndex = '999';
-                wrap.style.background = '#F4EFE6';
+                var _bg = getComputedStyle(pd.documentElement).getPropertyValue('--bone').trim() || '#F4EFE6';
+                wrap.style.background = _bg;
                 wrap.style.paddingTop = '4px';
                 wrap.style.paddingBottom = '4px';
                 wrap.style.borderBottom = '1px solid #E8E0D0';
@@ -1522,7 +1533,7 @@ def screen_results():
 
     # Dimensions
     st.markdown('<div id="sa-dimensions"></div>', unsafe_allow_html=True)
-    st.markdown("## The six dimensions")
+    st.markdown("## Dimension scores")
     st.markdown(
         '<p class="sa-lede" style="font-size:1.05rem">Any dimension with insufficient answered weight is excluded from the overall score and marked as such.</p>',
         unsafe_allow_html=True,
@@ -1801,13 +1812,17 @@ def screen_results():
     # Determine the weakest dimension name for the prompt
     _weakest_name = weakest["name"] if scored_dims else "the weakest dimension"
     st.markdown(
-        f"Three people should see this: your CFO, your ops lead, and whoever owns {_weakest_name}. "
-        "Copy the summary below and send it. The audit is more useful when the people who need to act on it can see it."
+        f"If you have a leadership team, send this to whoever owns {_weakest_name}. "
+        "If it is just you, save it. The 90-day plan is what matters. "
+        "Copy the summary below and forward it. The audit is more useful when the people who need to act on it can see it."
     )
+    _industry = st.session_state.industry
     _summary_lines = [
         f"STRUCTURAL AUDIT — {company} ({_audit_date})",
+        f"Industry: {_industry}" if _industry else "",
         f"Overall score: {r['overall']:.1f} / 100 ({band_label})",
     ]
+    _summary_lines = [l for l in _summary_lines if l]  # drop empty industry line
     if band_narrative:
         _summary_lines.append(f"\n{band_narrative}")
     _summary_lines.append("")
