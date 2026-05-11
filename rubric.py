@@ -670,7 +670,7 @@ DIMENSIONS = [
                 "allow_na": True,
                 "risk_copy": "Unreliable delivery erodes customer trust faster than any marketing campaign can rebuild it.",
                 "opportunity_copy": "Fixing delivery reliability compounds: the same customers buy more, churn less, and refer more.",
-                "recommendation": "Instrument OTIF measurement for the next 60 days, even roughly, you cannot fix what you don't measure.",
+                "recommendation": "Instrument OTIF measurement for the next 60 days, even roughly; you cannot fix what you don't measure.",
             },
             {
                 "id": "ops_03",

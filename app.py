@@ -14,8 +14,10 @@ import os
 import re
 import math
 import json
+import html as _html
 import base64
 import zlib
+import time as _time
 import datetime as _dt
 import requests
 import streamlit as st
@@ -870,7 +872,6 @@ This is an honest tool. You will be asked things you do not want to answer. The 
 - Mean time to resolve customer issues (hours)
 """)
     if st.button("Begin the audit", use_container_width=False):
-        import time as _time
         st.session_state["_audit_start"] = _time.time()
         go("context")
 
@@ -887,16 +888,21 @@ This is an honest tool. You will be asked things you do not want to answer. The 
                 st.rerun()
             else:
                 st.error("Invalid code. Please check and try again.")
-        # Auto-detect localStorage and offer one-click restore
+        # Auto-detect localStorage or URL ?code= param and offer one-click restore
         _components.html(
             """
             <script>
             (function(){
               try {
-                var saved = window.parent.localStorage.getItem('sa_audit_state');
+                // Check URL for ?code= param (takes priority over localStorage)
+                var urlCode = null;
+                try {
+                  var params = new URLSearchParams(window.parent.location.search);
+                  urlCode = params.get('code');
+                } catch(e) {}
+                var saved = urlCode || window.parent.localStorage.getItem('sa_audit_state');
                 if (saved) {
                   var pd = window.parent.document;
-                  // Find the resume text input and fill it
                   var inputs = pd.querySelectorAll('input[type="text"]');
                   var resumeInput = null;
                   for (var i = 0; i < inputs.length; i++) {
@@ -906,12 +912,10 @@ This is an honest tool. You will be asked things you do not want to answer. The 
                     }
                   }
                   if (resumeInput && !resumeInput.value) {
-                    // Set the value via React's internal setter so Streamlit picks it up
                     var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
                     nativeSetter.call(resumeInput, saved);
                     resumeInput.dispatchEvent(new Event('input', { bubbles: true }));
                   }
-                  // Show a hint above the expander
                   var expanders = pd.querySelectorAll('[data-testid="stExpander"]');
                   if (expanders.length > 0) {
                     var exp = expanders[expanders.length - 1];
@@ -919,7 +923,9 @@ This is an honest tool. You will be asked things you do not want to answer. The 
                       pd._saResumeHint = true;
                       var hint = pd.createElement('div');
                       hint.style.cssText = 'font-family:Inter,sans-serif;font-size:0.88rem;color:#8B6A3F;margin:0 0 6px;padding:8px 12px;background:#FBF8F1;border:1px solid #D9CFBC';
-                      hint.textContent = 'You have an audit in progress in this browser. Open the panel below and click Resume to pick up where you left off.';
+                      hint.textContent = urlCode
+                        ? 'A save code was found in the link. Open the panel below and click Resume to restore it.'
+                        : 'You have an audit in progress in this browser. Open the panel below and click Resume to pick up where you left off.';
                       exp.parentElement.insertBefore(hint, exp);
                     }
                   }
@@ -1077,7 +1083,7 @@ def render_question(q):
                 "ops_q_on_time_delivery_pct": "%",
                 "per_q_days_to_fill": " days", "fin_q_days_to_close": " days",
                 "ops_q_mttr_hours": " hrs",
-                "sw_q_num_saas_tools": " tools", "ai_q_num_ai_workflows": "",
+                "sw_q_num_saas_tools": " tools", "ai_q_num_ai_workflows": " workflows",
                 "sal_q_cac": "",
             }
             _u = _BENCH_UNITS.get(qid, "")
@@ -1163,7 +1169,8 @@ def screen_dimension():
         if _grp and _grp != _last_group:
             _components.html(
                 f'<p style="font-family:Fraunces,Georgia,serif;font-size:1.05rem;font-weight:400;'
-                f'color:#8B6A3F;margin:0;padding:0;letter-spacing:0.01em;line-height:1.4">{_grp}</p>',
+                f'color:#8B6A3F;margin:0;padding:0;letter-spacing:0.01em;line-height:1.4">{_grp}</p>'
+                '<script>try{var f=window.frameElement;if(f){var h=document.body.scrollHeight;if(h>0)f.style.height=h+"px"}}catch(e){}</script>',
                 height=38,
             )
             _last_group = _grp
@@ -1226,10 +1233,10 @@ def screen_results():
     _save_to_localstorage()
     mark()
     r = compute_results()
-    company = st.session_state.company or "The Company"
+    _raw_company = st.session_state.company or "The Company"
+    company = _html.escape(_raw_company)  # safe for embedding in HTML
     _audit_date = _dt.date.today().strftime("%B %-d, %Y")
     # Time-spent calculation
-    import time as _time
     _start = st.session_state.get("_audit_start")
     _elapsed_str = ""
     if _start:
@@ -1380,6 +1387,35 @@ def screen_results():
             unsafe_allow_html=True,
         )
 
+    # --- Biggest lever callout ---
+    if r["risks"] and scored_dims:
+        _top_q, _top_dim, _top_score = r["risks"][0]
+        # Estimate point gain if this question moved from current score to 1.0
+        _top_dim_def = DIMENSIONS[dim_id_to_idx[_top_dim["id"]]]
+        _top_dim_result = next((d for d in r["dimensions"] if d["id"] == _top_dim["id"]), None)
+        if _top_dim_result and _top_dim_result["score"] is not None:
+            # Question's contribution to dimension score
+            _q_w = float(_top_q.get("weight", 1.0))
+            _dim_answered_w = sum(
+                float(q.get("weight", 1.0))
+                for q in _top_dim_def["questions"]
+                if score_question(q, answers.get(q["id"]), industry)[1]
+            )
+            if _dim_answered_w > 0:
+                _dim_gain = ((1.0 - _top_score) * _q_w / _dim_answered_w) * 100.0
+                # Dimension's contribution to overall
+                _total_dim_w = sum(d["weight"] for d in scored_dims)
+                _overall_gain = _dim_gain * _top_dim_result["weight"] / _total_dim_w
+                if _overall_gain >= 0.5:
+                    st.markdown(
+                        f'<div style="font-size:0.95rem;color:{_band_color};margin:0 0 1rem;padding:10px 14px;'
+                        f'background:transparent;border:1px dashed {_band_color}">'
+                        f'<strong>Biggest lever.</strong> Fixing '
+                        f'<em>&ldquo;{_html.escape(_top_q["text"])}&rdquo;</em> '
+                        f'in {_html.escape(_top_dim["name"])} could move the overall score by ~{_overall_gain:.1f} points.</div>',
+                        unsafe_allow_html=True,
+                    )
+
     # --- Pre-compute which optional sections will render ---
     _has_opps = bool(r["opportunities"])
     _has_plan = any(q.get("recommendation") for q, _, _ in r["risks"][:3]) or (
@@ -1439,7 +1475,7 @@ def screen_results():
                 wrap.style.position = 'sticky';
                 wrap.style.top = '0';
                 wrap.style.zIndex = '999';
-                var _bg = getComputedStyle(pd.documentElement).getPropertyValue('--bone').trim() || '#F4EFE6';
+                var _bg = getComputedStyle(window.parent.document.documentElement).getPropertyValue('--bone').trim() || '#F4EFE6';
                 wrap.style.background = _bg;
                 wrap.style.paddingTop = '4px';
                 wrap.style.paddingBottom = '4px';
@@ -1518,7 +1554,9 @@ def screen_results():
           }}
         </style>
         <div class="radar-wrap">
-          <svg viewBox="-60 -15 520 430" width="100%" xmlns="http://www.w3.org/2000/svg">
+          <svg viewBox="-60 -15 520 430" width="100%" xmlns="http://www.w3.org/2000/svg"
+               role="img" aria-label="Radar chart of dimension scores: {', '.join(f'{d["name"]} {d["score"]:.0f}' for d in scored_for_radar)}">
+            <title>Dimension score radar chart</title>
             {_grid_svg}{_axis_svg}{_data_svg}{_dots_svg}{_labels_svg}
           </svg>
         </div>
@@ -1734,7 +1772,7 @@ def screen_results():
         email_val = st.text_input("Email address", key="capture_email", placeholder="founder@yourcompany.com")
         if st.button("Send me the action plan", key="btn_capture"):
             if email_val and "@" in email_val and "." in email_val:
-                _capture_email(email_val, company, band_label, r["overall"])
+                _capture_email(email_val, _raw_company, band_label, r["overall"])
                 st.rerun()
             else:
                 st.warning("Please enter a valid email address.")
@@ -1818,7 +1856,7 @@ def screen_results():
     )
     _industry = st.session_state.industry
     _summary_lines = [
-        f"STRUCTURAL AUDIT — {company} ({_audit_date})",
+        f"STRUCTURAL AUDIT — {_raw_company} ({_audit_date})",
         f"Industry: {_industry}" if _industry else "",
         f"Overall score: {r['overall']:.1f} / 100 ({band_label})",
     ]
@@ -1961,7 +1999,7 @@ def screen_results():
     # --- Save code (visible, not buried) ---
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     st.markdown("### Save your results")
-    st.markdown("Copy your audit code below. Use it to resume from any device, or paste it into the comparison tool on a future audit to track your progress.")
+    st.markdown("Copy your audit code below, or share a direct link. Use it to resume from any device, or paste it into the comparison tool on a future audit to track your progress.")
     _results_code = _encode_state()
     st.code(_results_code, language=None)
     _components.html(
@@ -1971,13 +2009,17 @@ def screen_results():
         button {{
           background:#14223D; color:#F4EFE6; border:none; padding:8px 18px;
           font-family:"Inter",system-ui,sans-serif; font-size:13px; font-weight:500;
-          cursor:pointer; letter-spacing:0.02em;
+          cursor:pointer; letter-spacing:0.02em; margin-right:8px;
         }}
         button:hover {{ background:#2A3758; }}
+        .link-btn {{ background:transparent!important; color:#14223D!important; border:1px solid #14223D!important; }}
+        .link-btn:hover {{ background:#EAE2D3!important; }}
         .ok {{ color:#8B6A3F; font-size:12px; margin-left:8px; font-family:"Inter",system-ui,sans-serif; }}
         </style>
         <button onclick="navigator.clipboard.writeText('{_results_code}').then(function(){{document.getElementById('rcp').textContent='Copied.'}})">
-          Copy to clipboard
+          Copy code
+        </button><button class="link-btn" onclick="var u='https://structural-audit.streamlit.app/?code={_results_code}';navigator.clipboard.writeText(u).then(function(){{document.getElementById('rcp').textContent='Link copied.'}})">
+          Copy link
         </button><span id="rcp" class="ok"></span>
         """,
         height=42,
