@@ -1991,7 +1991,7 @@ def screen_results():
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     st.markdown("### If you have not taken the Index yet")
     st.markdown(
-        "The Structural Advantage Index is the personal companion to this audit. Eleven minutes. An operator archetype. "
+        "The Structural Advantage Index is the personal companion to this audit. Ten minutes. An operator archetype. "
         "The shape you bring to the work, named. Most operators find the two read differently when held side by side. "
         "[Open the Index &rarr;](https://structuraladvantageindex.netlify.app/)"
     )
