@@ -597,12 +597,13 @@ def _save_to_localstorage():
     """Inject JS into the parent document that auto-saves the current state
     to localStorage. Runs silently on every screen render."""
     code = _encode_state()
+    _safe_code = json.dumps(code)
     _components.html(
         f"""
         <script>
         (function(){{
           try {{
-            window.parent.localStorage.setItem('sa_audit_state', '{code}');
+            window.parent.localStorage.setItem('sa_audit_state', {_safe_code});
           }} catch(e) {{}}
         }})();
         </script>
@@ -1201,6 +1202,7 @@ def screen_dimension():
     # Save code for cross-device resume
     with st.expander("Save your progress"):
         code = _encode_state()
+        _safe_code = json.dumps(code)
         st.code(code, language=None)
         _components.html(
             f"""
@@ -1214,7 +1216,7 @@ def screen_dimension():
             button:hover {{ background:#2A3758; }}
             .ok {{ color:#8B6A3F; font-size:12px; margin-left:8px; font-family:"Inter",sans-serif; }}
             </style>
-            <button onclick="navigator.clipboard.writeText('{code}').then(function(){{document.getElementById('cp').textContent='Copied.'}})">
+            <button onclick="navigator.clipboard.writeText({_safe_code}).then(function(){{document.getElementById('cp').textContent='Copied.'}})">
               Copy to clipboard
             </button><span id="cp" class="ok"></span>
             """,
@@ -1386,6 +1388,11 @@ def screen_results():
             f'{exec_summary}</div>',
             unsafe_allow_html=True,
         )
+
+    # Pre-compute lookups needed by both the biggest-lever callout and dimension cards
+    dim_id_to_idx = {dim["id"]: i for i, dim in enumerate(DIMENSIONS)}
+    industry = st.session_state.industry
+    answers = st.session_state.answers
 
     # --- Biggest lever callout ---
     if r["risks"] and scored_dims:
@@ -1576,9 +1583,6 @@ def screen_results():
         '<p class="sa-lede" style="font-size:1.05rem">Any dimension with insufficient answered weight is excluded from the overall score and marked as such.</p>',
         unsafe_allow_html=True,
     )
-    dim_id_to_idx = {dim["id"]: i for i, dim in enumerate(DIMENSIONS)}
-    industry = st.session_state.industry
-    answers = st.session_state.answers
     for d in r["dimensions"]:
         # Compute benchmark comparison for numeric questions in this dimension
         dim_def = DIMENSIONS[dim_id_to_idx[d["id"]]]
@@ -1674,12 +1678,12 @@ def screen_results():
     if not r["risks"]:
         st.markdown("<p>No material risks surfaced. This is rare. Double-check the answers with a skeptical eye.</p>", unsafe_allow_html=True)
     for q, dim, score in r["risks"]:
-        risk = q.get("risk_copy", "")
-        rec = q.get("recommendation", "")
+        risk = _html.escape(q.get("risk_copy", ""))
+        rec = _html.escape(q.get("recommendation", ""))
         st.markdown(
             f'<div class="sa-risk">'
-            f'<div class="sa-meta">{dim["name"]}</div>'
-            f'<div class="q">&ldquo;{q["text"]}&rdquo;</div>'
+            f'<div class="sa-meta">{_html.escape(dim["name"])}</div>'
+            f'<div class="q">&ldquo;{_html.escape(q["text"])}&rdquo;</div>'
             f'<div class="copy">{risk}</div>'
             + (f'<div class="sa-rec"><strong>Next action.</strong> {rec}</div>' if rec else "")
             + '</div>',
@@ -1696,12 +1700,12 @@ def screen_results():
             unsafe_allow_html=True,
         )
         for q, dim, score in r["opportunities"]:
-            opp = q.get("opportunity_copy", "")
-            rec = q.get("recommendation", "")
+            opp = _html.escape(q.get("opportunity_copy", ""))
+            rec = _html.escape(q.get("recommendation", ""))
             st.markdown(
                 f'<div class="sa-opp">'
-                f'<div class="sa-meta">{dim["name"]}</div>'
-                f'<div class="q">&ldquo;{q["text"]}&rdquo;</div>'
+                f'<div class="sa-meta">{_html.escape(dim["name"])}</div>'
+                f'<div class="q">&ldquo;{_html.escape(q["text"])}&rdquo;</div>'
                 f'<div class="copy">{opp}</div>'
                 + (f'<div class="sa-rec"><strong>Next action.</strong> {rec}</div>' if rec else "")
                 + '</div>',
@@ -2001,6 +2005,7 @@ def screen_results():
     st.markdown("### Save your results")
     st.markdown("Copy your audit code below, or share a direct link. Use it to resume from any device, or paste it into the comparison tool on a future audit to track your progress.")
     _results_code = _encode_state()
+    _safe_results_code = json.dumps(_results_code)
     st.code(_results_code, language=None)
     _components.html(
         f"""
@@ -2016,9 +2021,9 @@ def screen_results():
         .link-btn:hover {{ background:#EAE2D3!important; }}
         .ok {{ color:#8B6A3F; font-size:12px; margin-left:8px; font-family:"Inter",system-ui,sans-serif; }}
         </style>
-        <button onclick="navigator.clipboard.writeText('{_results_code}').then(function(){{document.getElementById('rcp').textContent='Copied.'}})">
+        <button onclick="navigator.clipboard.writeText({_safe_results_code}).then(function(){{document.getElementById('rcp').textContent='Copied.'}})">
           Copy code
-        </button><button class="link-btn" onclick="var u='https://structural-audit.streamlit.app/?code={_results_code}';navigator.clipboard.writeText(u).then(function(){{document.getElementById('rcp').textContent='Link copied.'}})">
+        </button><button class="link-btn" onclick="var u='https://structural-audit.streamlit.app/?code='+{_safe_results_code};navigator.clipboard.writeText(u).then(function(){{document.getElementById('rcp').textContent='Link copied.'}})">
           Copy link
         </button><span id="rcp" class="ok"></span>
         """,
