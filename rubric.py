@@ -62,6 +62,12 @@ BANDS = [
 MINIMUM_ANSWERED_FRACTION = 0.60
 INSUFFICIENT_DATA_LABEL = "Insufficient Data"
 
+# Score thresholds for classifying question results as risks vs opportunities.
+# Risks: answered questions scoring below this fraction.
+RISK_THRESHOLD = 0.4
+# Opportunities: questions scoring at or above RISK_THRESHOLD but below this ceiling.
+OPPORTUNITY_CEILING = 0.75
+
 # ---------------------------------------------------------------------------
 # Band narratives (two-sentence executive-summary interpretation keyed off
 # band id). Blunt operator voice. Used in both the Streamlit UI and PDF
@@ -186,7 +192,7 @@ DIMENSIONS = [
                 "allow_na": True,
                 "risk_copy": "The absence of a succession plan is a silent concentration risk sitting under your entire org chart.",
                 "opportunity_copy": "A one-page key-seat map is a cheap insurance policy against the single most predictable business failure mode.",
-                "recommendation": "Draft a one-page key-seat map this week listing every critical role and a named backup; the gaps become your Q1 hiring priorities.",
+                "recommendation": "Draft a one-page key-seat map this week listing every critical role and a named backup; the gaps become your next-quarter hiring priorities.",
             },
             {
                 "id": "per_07",
@@ -336,8 +342,8 @@ DIMENSIONS = [
                 "weight": 1.2,
                 "lower_is_better": True,
                 "allow_na": True,
-                "risk_copy": "Your close cycle is longer than most peers in your industry, which means every monthly decision starts with stale data.",
-                "opportunity_copy": "Your close is near industry median. Shaving even two days off compounds into faster action across the business.",
+                "risk_copy": "A close cycle longer than industry median means every monthly decision starts with stale data.",
+                "opportunity_copy": "A close near industry median still has room to improve. Shaving even two days off compounds into faster action across the business.",
                 "recommendation": "Map the close calendar step by step, find the single longest wait, and fix that one bottleneck.",
             },
             {
@@ -369,7 +375,7 @@ DIMENSIONS = [
                 "reverse": False,
                 "allow_na": True,
                 "risk_copy": "Multiple sources of truth mean there is no truth.",
-                "opportunity_copy": "This is the foundation for any future automation, reporting, or AI work.",
+                "opportunity_copy": "One clean system-of-record per domain cuts reporting time in half and makes every automation project immediately cheaper.",
                 "recommendation": "List your four core domains and name the authoritative system for each; communicate it to the team this week.",
             },
             {
@@ -485,7 +491,7 @@ DIMENSIONS = [
                 "reverse": False,
                 "allow_na": True,
                 "risk_copy": "An owner who doesn't use AI personally cannot credibly lead an AI-enabled team.",
-                "opportunity_copy": "Personal AI fluency changes how you evaluate every other decision, hiring, pricing, speed.",
+                "opportunity_copy": "Personal AI fluency changes how you evaluate every other decision — from hiring to pricing to speed.",
                 "recommendation": "Pick one task you do weekly and move it to an AI-assisted workflow this month.",
             },
             {
@@ -521,7 +527,7 @@ DIMENSIONS = [
                 "lower_is_better": False,
                 "allow_na": True,
                 "risk_copy": "Zero production AI workflows means you are falling behind competitors who have them.",
-                "opportunity_copy": "Each production AI workflow compounds, it trains the team, generates data, and unlocks the next one.",
+                "opportunity_copy": "Each production AI workflow compounds: it trains the team, generates data, and unlocks the next one.",
                 "recommendation": "Pick one high-volume, text-heavy process and deploy an AI tool on it within 30 days.",
             },
         ],
@@ -595,7 +601,7 @@ DIMENSIONS = [
             {
                 "id": "sal_06",
                 "group": "Retention & Economics",
-                "text": "Discounts above a set threshold require approval. They are not handed out by reps to close deals.",
+                "text": "Discounts above a set threshold require approval and are not handed out by reps to close deals.",
                 "type": "yesno",
                 "weight": 1.0,
                 "reverse": False,
@@ -636,8 +642,8 @@ DIMENSIONS = [
                 "weight": 1.2,
                 "lower_is_better": True,
                 "allow_na": True,
-                "risk_copy": "Your monthly churn rate is above the industry median. At this pace, you are replacing a meaningful share of your base every year just to stay flat.",
-                "opportunity_copy": "Your churn is near industry norms. Cutting it by even half a point per month compounds into significant LTV improvement over a year.",
+                "risk_copy": "A monthly churn rate above industry median means replacing a meaningful share of the customer base every year just to stay flat.",
+                "opportunity_copy": "Churn near industry norms still has room to improve. Cutting it by even half a point per month compounds into significant LTV improvement over a year.",
                 "recommendation": "Segment your last 10 churned customers by reason and fix the single most common one.",
             },
         ],
@@ -753,7 +759,7 @@ DIMENSIONS = [
                 "lower_is_better": True,
                 "allow_na": True,
                 "risk_copy": "Long resolution times compound: one slow fix creates three follow-up tickets.",
-                "opportunity_copy": "Cutting MTTR often costs nothing, the fix is usually a process bottleneck, not a resource gap.",
+                "opportunity_copy": "Cutting MTTR often costs nothing: the fix is usually a process bottleneck, not a resource gap.",
                 "recommendation": "Pull your last 20 resolved tickets, find the step where they sat longest, and fix that step.",
             },
         ],

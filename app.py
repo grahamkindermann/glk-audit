@@ -30,6 +30,8 @@ from rubric import (
     INDUSTRY_LIST,
     MINIMUM_ANSWERED_FRACTION,
     INSUFFICIENT_DATA_LABEL,
+    RISK_THRESHOLD,
+    OPPORTUNITY_CEILING,
     BRAND,
     CTA,
     RUBRIC_VERSION,
@@ -207,7 +209,7 @@ p, li, label, .stMarkdown, [data-testid="stMarkdownContainer"] p {
   font-weight: 600;
 }
 .sa-band--critical { background: #F2DDD9; border-color: var(--warn); color: var(--warn); }
-.sa-band--fragile  { background: #F5EDDF; border-color: #B8872E; color: #8B6A2F; }
+.sa-band--fragile  { background: #F5EDDF; border-color: #B8872E; color: #6B5220; }
 .sa-band--functional { background: #E8EAE0; border-color: #5A6B3F; color: #4A5A32; }
 .sa-band--strong   { background: #D9E6E0; border-color: #2E6B5A; color: #2E6B5A; }
 .sa-band--durable  { background: #D5E0EC; border-color: var(--ink); color: var(--ink); }
@@ -564,6 +566,7 @@ def _encode_state():
         "yo": ss.get("years_in_op", ""),
         "oh": ss.get("owner_hours", ""),
         "ai": ss.get("audit_intent", ""),
+        "ts": ss.get("_audit_start", None),
     }
     raw = json.dumps(payload, separators=(",", ":")).encode()
     compressed = zlib.compress(raw, 9)
@@ -589,6 +592,9 @@ def _decode_state(code):
         ss["years_in_op"] = payload.get("yo", "")
         ss["owner_hours"] = payload.get("oh", "")
         ss["audit_intent"] = payload.get("ai", "")
+        _ts = payload.get("ts")
+        if _ts is not None:
+            ss["_audit_start"] = _ts
         return True
     except Exception:
         return False
@@ -768,9 +774,9 @@ def compute_results():
         key=lambda t: ((1.0 - t[2]) * float(t[0].get("weight", 1.0))),
         reverse=True,
     )
-    risks = [r for r in risks_ranked if r[2] < 0.4][:6]
+    risks = [r for r in risks_ranked if r[2] < RISK_THRESHOLD][:6]
     # Opportunities: partially in place but room to improve; no overlap with risks
-    opps = [r for r in risks_ranked if 0.4 <= r[2] < 0.75][:6]
+    opps = [r for r in risks_ranked if RISK_THRESHOLD <= r[2] < OPPORTUNITY_CEILING][:6]
     return {
         "overall": overall,
         "band": band,
@@ -786,8 +792,7 @@ def _capture_email(email: str, company: str, band: str, score: float):
     """Send lead to Loops for nurture drip. Fails silently — no error shown to user."""
     api_key = os.environ.get("LOOPS_API_KEY") or st.secrets.get("LOOPS_API_KEY", "")
     if not api_key:
-        # No key configured; just mark as captured so UX still works
-        st.session_state.email_captured = True
+        # No key configured; don't show false confirmation
         return
     try:
         resp = requests.post(
@@ -1017,17 +1022,17 @@ def screen_context():
             placeholder="e.g. 55",
         )
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+    ready = bool(st.session_state.company) and bool(st.session_state.revenue) and bool(st.session_state.industry)
+    if not ready:
+        st.markdown('<p class="sa-footnote">Company name, industry, and revenue band are required to continue.</p>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Back", key="ctx_back", use_container_width=True):
             go("intro")
     with col2:
-        ready = bool(st.session_state.company) and bool(st.session_state.revenue) and bool(st.session_state.industry)
         if st.button("Continue to the audit", key="ctx_next", use_container_width=True, disabled=not ready):
             st.session_state.dim_idx = 0
             go("dim")
-    if not ready:
-        st.markdown('<p class="sa-footnote">Company name, industry, and revenue band are required to continue.</p>', unsafe_allow_html=True)
 
 def render_question(q):
     qid = q["id"]
@@ -1043,10 +1048,10 @@ def render_question(q):
             if label in options:
                 idx = options.index(label)
         elif current == "N/A":
-            idx = 0 if "N/A" in options else 0
+            idx = options.index("N/A") if "N/A" in options else 0
         st.markdown(f"**{q['text']}**")
         st.caption("1 = Strongly disagree · 5 = Strongly agree")
-        choice = st.radio("Select", options, index=idx, key=f"rad_{qid}", horizontal=True, label_visibility="collapsed")
+        choice = st.radio(q["text"], options, index=idx, key=f"rad_{qid}", horizontal=True, label_visibility="hidden")
         if choice == "—":
             st.session_state.answers[qid] = None
         elif choice == "N/A":
@@ -1245,11 +1250,13 @@ def screen_results():
         _elapsed_min = int((_time.time() - _start) / 60)
         if _elapsed_min >= 1:
             _elapsed_str = f" · Completed in {_elapsed_min} minute{'s' if _elapsed_min != 1 else ''}"
+    _respondent = st.session_state.get("respondent", "")
+    _role_str = f" · Completed by: {_html.escape(_respondent)}" if _respondent else ""
     st.markdown(
-        f'<div class="sa-meta">Prepared for {company} · {_audit_date}{_elapsed_str} · Confidential</div>',
+        f'<div class="sa-meta">Prepared for {company} · {_audit_date}{_elapsed_str}{_role_str} · Confidential</div>',
         unsafe_allow_html=True,
     )
-    st.markdown(f"# {company}. Structural Audit.")
+    st.markdown(f"# {_raw_company}. Structural Audit.")
     if r["overall"] is None:
         st.warning("Not enough of the audit was completed to generate a score. Return and answer more questions.")
         if st.button("Return to the audit"):
@@ -1318,9 +1325,10 @@ def screen_results():
         st.markdown(f"<p>{band_narrative}</p>", unsafe_allow_html=True)
     # Distance to next band (motivational nudge)
     if band_id != "durable":
-        _NEXT_BAND = {"critical": ("Fragile", 41), "fragile": ("Functional", 61),
-                      "functional": ("Strong", 76), "strong": ("Durable", 91)}
-        _nb = _NEXT_BAND.get(band_id)
+        # Derive next band from BANDS at runtime to avoid threshold drift
+        _band_ids = [b[0] for b in BANDS]
+        _cur_idx = _band_ids.index(band_id) if band_id in _band_ids else -1
+        _nb = (BANDS[_cur_idx + 1][3], BANDS[_cur_idx + 1][1]) if 0 <= _cur_idx < len(BANDS) - 1 else None
         if _nb:
             _gap = _nb[1] - r["overall"]
             st.markdown(
@@ -1775,7 +1783,7 @@ def screen_results():
     if not _ec:
         email_val = st.text_input("Email address", key="capture_email", placeholder="founder@yourcompany.com")
         if st.button("Send me the action plan", key="btn_capture"):
-            if email_val and "@" in email_val and "." in email_val:
+            if email_val and re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email_val.strip()):
                 _capture_email(email_val, _raw_company, band_label, r["overall"])
                 st.rerun()
             else:
@@ -1791,6 +1799,9 @@ def screen_results():
             'and a note on what to do if the audit surfaces something bigger than a checklist can fix.</p></div>',
             unsafe_allow_html=True,
         )
+        if st.button("Change email", key="btn_change_email"):
+            st.session_state.email_captured = None
+            st.rerun()
 
     # --- Call CTA (heavier ask — comes second, band-specific copy) ---
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
@@ -2052,9 +2063,6 @@ def screen_results():
                 st.session_state.answers = prev_payload.get("a", {})
                 st.session_state.industry = prev_payload.get("i", current_industry)
                 prev_r = compute_results()
-                # Restore current
-                st.session_state.answers = current_answers
-                st.session_state.industry = current_industry
                 if prev_r["overall"] is not None and r["overall"] is not None:
                     delta = r["overall"] - prev_r["overall"]
                     direction = "up" if delta > 0 else "down" if delta < 0 else "flat"
@@ -2086,6 +2094,7 @@ def screen_results():
                     st.warning("Could not compare. The previous audit may not have enough data.")
             except Exception:
                 st.error("Invalid save code. Please check and try again.")
+            finally:
                 st.session_state.answers = current_answers
                 st.session_state.industry = current_industry
 
