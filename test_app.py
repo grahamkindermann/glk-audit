@@ -372,7 +372,10 @@ def test_rubric_integrity():
 
 def test_copy_conventions():
     src = open(APP, encoding="utf-8").read()
-    assert "Fifteen to twenty" not in src, "duration must be the canonical fifteen minutes"
+    # Canonical duration is fifteen to twenty minutes, shared with the site.
+    # If this changes, change the site the same day.
+    assert "Fifteen to twenty minutes" in src, "canonical duration missing from the intro"
+    assert "· Fifteen minutes ·" not in src, "solo fifteen-minute claim conflicts with the site"
     assert "Fifty-one" not in src, "the rubric holds fifty questions; keep the count honest"
     assert 'sa-meta">Step 1 of 8 .' not in src, "middot convention: no period separators"
     assert 'The Structural Audit . ' not in src, "middot convention: no period separators"

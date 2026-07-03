@@ -1095,7 +1095,7 @@ def screen_intro():
             height=0,
         )
 
-    st.markdown('<div class="sa-meta">For the company · Fifteen minutes · Six dimensions · Mostly quick ratings</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sa-meta">For the company · Fifteen to twenty minutes · Six dimensions · Mostly quick ratings</div>', unsafe_allow_html=True)
     st.markdown("# An operator's diagnostic of the business itself.")
     st.markdown(
         '<p class="sa-lede">The Structural Audit is the companion to the Structural Advantage Index. '
@@ -1435,8 +1435,9 @@ def screen_dimension():
             if ans not in (None, "N/A", ""):
                 answered_so_far += 1
     remaining_q = total_all_q - total_so_far
-    # 18s per question: 50 questions = 15 minutes, the canonical duration.
-    est_minutes = max(1, round(remaining_q * 18 / 60))
+    # 20s per question: 50 questions = 17 minutes, mid-band of the canonical
+    # fifteen-to-twenty claim shared with grahamkindermann.com.
+    est_minutes = max(1, round(remaining_q * 20 / 60))
     time_label = f"~{est_minutes} min remaining" if est_minutes > 1 else "~1 min remaining"
     if idx > 0:
         st.caption(f"{answered_so_far} of {total_so_far} questions answered across {idx} completed dimension{'s' if idx > 1 else ''}. {time_label}.")
