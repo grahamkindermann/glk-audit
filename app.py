@@ -38,24 +38,64 @@ from rubric import (
 )
 
 # ---------------------------------------------------------------------------
+# Config lookup: env var -> Streamlit secrets -> local .env file.
+# Never raises. Streamlit does not auto-load .env, and st.secrets throws when
+# no secrets.toml exists, so both are wrapped.
+# ---------------------------------------------------------------------------
+def _get_conf(name: str, default: str = "") -> str:
+    val = os.environ.get(name)
+    if val:
+        return val
+    try:
+        val = st.secrets.get(name, "")
+        if val:
+            return str(val)
+    except Exception:
+        pass
+    try:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+        if os.path.exists(env_path):
+            with open(env_path) as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line.startswith(name + "="):
+                        return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return default
+
+# ---------------------------------------------------------------------------
 # Page chrome
 # ---------------------------------------------------------------------------
+_PAGE_TITLE = "The Structural Audit · A diagnostic of the company, not the founder"
+_META_DESCRIPTION = (
+    "Fifty questions across six dimensions. Weighted scoring, industry benchmarks, "
+    "risk-ranked output. An honest tool for operators."
+)
+_FAVICON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "favicon.png")
+
 st.set_page_config(
-    page_title="The Structural Audit . A diagnostic of the company, not the founder",
-    page_icon="◆",
+    page_title=_PAGE_TITLE,
+    page_icon=_FAVICON if os.path.exists(_FAVICON) else "◆",
     layout="centered",
     initial_sidebar_state="collapsed",
 )
 
-# Social / OG meta tags (body-level; Streamlit doesn't allow <head> injection)
+# Social / OG meta tags (body-level; Streamlit does not allow <head> injection
+# server-side). Non-JS scrapers see Streamlit's HTML shell regardless — full
+# link-preview support requires migration off Community Cloud. This block
+# covers regex-based scrapers; _install_head_meta() covers JS-rendering
+# crawlers and enforces the clean tab title.
 _SOCIAL_META = """
+<meta name="description" content="Fifty questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
 <meta property="og:title" content="The Structural Audit: A diagnostic of the company, not the founder" />
-<meta property="og:description" content="Fifty-one questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
+<meta property="og:description" content="Fifty questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://structural-audit.streamlit.app/" />
+<meta property="og:site_name" content="Structural Advantage" />
 <meta name="twitter:card" content="summary" />
 <meta name="twitter:title" content="The Structural Audit" />
-<meta name="twitter:description" content="Fifty-one questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
+<meta name="twitter:description" content="Fifty questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
 """
 st.markdown(_SOCIAL_META, unsafe_allow_html=True)
 
@@ -384,12 +424,64 @@ div.stButton.sa-link > button:hover * {
     padding: 10px 14px !important;
     font-size: 13px !important;
   }
+  /* Larger tap targets for the likert/yesno radios on phones */
+  div[data-testid="stRadio"] label {
+    padding: 8px 12px 8px 2px !important;
+    margin-right: 2px !important;
+  }
 }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
 import streamlit.components.v1 as _components
+
+def _install_head_meta():
+    """Enforce a clean tab title (Streamlit Cloud appends a vendor suffix) and
+    inject head-level meta for JS-rendering crawlers. Installs once per page
+    load; the title observer re-asserts after every rerun."""
+    _components.html(
+        f"""
+        <script>
+        (function(){{
+          try {{
+            var pw = window.parent;
+            var pd = pw.document;
+            var DESIRED = {json.dumps(_PAGE_TITLE)};
+            if (!pw._saTitleInstalled) {{
+              pw._saTitleInstalled = true;
+              var enforce = function() {{
+                if (pd.title !== DESIRED) pd.title = DESIRED;
+              }};
+              enforce();
+              var tEl = pd.querySelector('title');
+              if (tEl) new MutationObserver(enforce).observe(tEl, {{ childList: true }});
+              setInterval(enforce, 1500);
+            }}
+            if (!pw._saMetaInstalled) {{
+              pw._saMetaInstalled = true;
+              var metas = [
+                {{ name: "description", content: {json.dumps(_META_DESCRIPTION)} }},
+                {{ property: "og:title", content: DESIRED }},
+                {{ property: "og:description", content: {json.dumps(_META_DESCRIPTION)} }},
+                {{ property: "og:type", content: "website" }},
+                {{ property: "og:url", content: "https://structural-audit.streamlit.app/" }},
+                {{ name: "twitter:card", content: "summary" }}
+              ];
+              metas.forEach(function(m) {{
+                var el = pd.createElement('meta');
+                Object.keys(m).forEach(function(k) {{ el.setAttribute(k, m[k]); }});
+                pd.head.appendChild(el);
+              }});
+            }}
+          }} catch(e) {{}}
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+
+_install_head_meta()
 
 # Scroll to top on every page transition.
 # st.markdown strips <script> tags, so we use st.components.v1.html() which
@@ -520,8 +612,12 @@ def _install_parent_js(scroll=True, beforeunload=True, buttons=True, hide_chrome
               '      var t = (b.textContent||"").trim();',
               '      var p = b.closest("div.stButton");',
               '      if (!p) return;',
-              '      if (t === "Back") p.classList.add("sa-ghost");',
+              '      if (t === "Back" || t.indexOf("No thanks") === 0 || t === "Start fresh") p.classList.add("sa-ghost");',
               '      if (t.indexOf("Edit ") === 0 || t.indexOf("Complete ") === 0 || t.indexOf("Skip this") === 0) p.classList.add("sa-link");',
+              '    });',
+              '    document.querySelectorAll("div[data-testid=stTextInput] input").forEach(function(inp){',
+              '      var ph = inp.getAttribute("placeholder") || "";',
+              '      if (ph.indexOf("e.g") === 0) inp.setAttribute("inputmode","decimal");',
               '    });',
               '  }',
               '  classify();',
@@ -572,6 +668,16 @@ def _encode_state():
     raw = json.dumps(payload, separators=(",", ":")).encode()
     compressed = zlib.compress(raw, 9)
     return base64.urlsafe_b64encode(compressed).decode().rstrip("=")
+
+def _peek_state(code):
+    """Decode a save code WITHOUT touching session state. Returns the payload
+    dict, or None if the code is invalid or not a dict."""
+    try:
+        padded = code + "=" * (-len(code) % 4)
+        payload = json.loads(zlib.decompress(base64.urlsafe_b64decode(padded)))
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
 
 def _decode_state(code):
     """Decode a resume code and populate session state. Returns True on success."""
@@ -643,12 +749,31 @@ _init()
 
 def go(step):
     st.session_state.step = step
+    # Once a session has navigated anywhere, never auto-offer the resume
+    # banner on a return to the intro — it would reload the page and drop
+    # the live session.
+    st.session_state["_navigated"] = True
     st.rerun()
 
-def advance_dim():
-    st.session_state.dim_idx += 1
-    if st.session_state.dim_idx >= len(DIMENSIONS):
-        st.session_state.step = "results"
+def advance_dim(skipped=False):
+    ss = st.session_state
+    if 0 <= ss.dim_idx < len(DIMENSIONS):
+        dim = DIMENSIONS[ss.dim_idx]
+        track(
+            "dimension_completed",
+            once_key=f"dim_done_{dim['id']}",
+            dim=dim["id"],
+            dim_index=ss.dim_idx + 1,
+            skipped=skipped,
+        )
+    ss.dim_idx += 1
+    if ss.dim_idx >= len(DIMENSIONS):
+        # Soft gate before the full results: score teaser + optional email.
+        # Never shown twice — once resolved (either way), go straight through.
+        if ss.get("email_captured") or ss.get("gate_declined") or ss.get("gate_done"):
+            ss.step = "results"
+        else:
+            ss.step = "gate"
     st.rerun()
 
 def back_dim():
@@ -661,7 +786,7 @@ def back_dim():
 def mark():
     st.markdown(
         '<div class="sa-mark"><span class="dot"></span>'
-        '<span>The Structural Audit . A diagnostic of the company, not the founder</span></div>',
+        '<span>The Structural Audit · A diagnostic of the company, not the founder</span></div>',
         unsafe_allow_html=True,
     )
 
@@ -790,26 +915,65 @@ def compute_results():
     }
 
 # ---------------------------------------------------------------------------
+# Funnel analytics (PostHog, server-side)
+# ---------------------------------------------------------------------------
+# Silent no-op without a POSTHOG_PROJECT_TOKEN (env, secrets, or .env).
+# Each event fires at most once per session, so reruns from widget
+# interaction never inflate the funnel. The numbers this exists to answer:
+# starts, per-dimension completion, drop-off, results views, capture rate.
+def track(event: str, once_key: str = None, **props):
+    ss = st.session_state
+    key = once_key or event
+    sent = ss.setdefault("_ph_sent", set())
+    if key in sent:
+        return
+    sent.add(key)  # mark before sending so a slow endpoint cannot double-fire
+    token = _get_conf("POSTHOG_PROJECT_TOKEN")
+    if not token:
+        return
+    host = _get_conf("POSTHOG_HOST", "https://us.i.posthog.com").rstrip("/")
+    if "ph_id" not in ss:
+        import uuid
+        ss["ph_id"] = str(uuid.uuid4())
+    try:
+        requests.post(
+            host + "/capture/",
+            json={
+                "api_key": token,
+                "event": event,
+                "distinct_id": ss["ph_id"],
+                "properties": {"rubric_version": RUBRIC_VERSION, **props},
+            },
+            timeout=3,
+        )
+    except Exception:
+        pass
+
+# ---------------------------------------------------------------------------
 # Email capture (Loops API)
 # ---------------------------------------------------------------------------
-def _capture_email(email: str, company: str, band: str, score: float):
+def _capture_email(email: str, company: str, band: str, score: float, name: str = ""):
     """Send lead to Loops for nurture drip. Fails silently — no error shown to user."""
-    api_key = os.environ.get("LOOPS_API_KEY") or st.secrets.get("LOOPS_API_KEY", "")
+    api_key = _get_conf("LOOPS_API_KEY")
     if not api_key:
         # No key configured; don't show false confirmation
         return
     try:
+        payload = {
+            "email": email,
+            "source": "structural_audit",
+            "company": company,
+            "auditBand": band,
+            "auditScore": round(score, 1),
+            "auditIntent": st.session_state.get("audit_intent", ""),
+        }
+        if name:
+            payload["firstName"] = name.split(" ")[0].strip()
+            payload["fullName"] = name.strip()
         resp = requests.post(
             "https://app.loops.so/api/v1/contacts/create",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "email": email,
-                "source": "structural_audit",
-                "company": company,
-                "auditBand": band,
-                "auditScore": round(score, 1),
-                "auditIntent": st.session_state.get("audit_intent", ""),
-            },
+            json=payload,
             timeout=8,
         )
         # Fire the event for the drip sequence.
@@ -834,13 +998,76 @@ def _capture_email(email: str, company: str, band: str, score: float):
 # Screens
 # ---------------------------------------------------------------------------
 def screen_intro():
-    _install_parent_js(scroll=False, beforeunload=False, buttons=False, hide_chrome=True)
+    _install_parent_js(scroll=False, beforeunload=False, buttons=True, hide_chrome=True)
     mark()
-    st.markdown('<div class="sa-meta">For the company . Fifteen to twenty minutes . Six dimensions . Mostly quick ratings</div>', unsafe_allow_html=True)
+
+    # --- Resume banner (?code= param, from a share link or the localStorage
+    # redirect below). Restore is explicit — never silent. ---
+    _resume_qp, _resume_src = "", ""
+    try:
+        _resume_qp = st.query_params.get("code", "")
+        _resume_src = st.query_params.get("src", "")
+    except Exception:
+        pass
+    _resume_payload = _peek_state(_resume_qp) if _resume_qp else None
+    if _resume_payload and _resume_payload.get("s") in ("context", "dim", "gate", "results"):
+        _saved_company = _resume_payload.get("c", "") or "an unnamed company"
+        _saved_answers = _resume_payload.get("a", {})
+        if not isinstance(_saved_answers, dict):
+            _saved_answers = {}
+        _n_answered = sum(1 for v in _saved_answers.values() if v not in (None, "", "N/A"))
+        _total_q = sum(len(d["questions"]) for d in DIMENSIONS)
+        _origin_line = (
+            "This browser holds a saved audit for"
+            if _resume_src == "ls"
+            else "This link contains a saved audit for"
+        )
+        st.markdown(
+            f'<div class="sa-card" style="border-left:3px solid var(--accent)">'
+            f'<div class="label">Audit in progress</div>'
+            f'<p style="margin:6px 0 2px;font-size:1rem">{_origin_line} '
+            f'<strong>{_html.escape(_saved_company)}</strong>. {_n_answered} of {_total_q} questions answered. '
+            f'Restore it to pick up where it left off.</p></div>',
+            unsafe_allow_html=True,
+        )
+        _rc1, _rc2 = st.columns(2)
+        with _rc1:
+            if st.button("Restore this audit", key="btn_banner_resume", use_container_width=True):
+                if _decode_state(_resume_qp):
+                    track("audit_resumed", origin="banner" if _resume_src == "ls" else "link")
+                    try:
+                        st.query_params.clear()
+                    except Exception:
+                        pass
+                    st.rerun()
+        with _rc2:
+            if st.button("Start fresh", key="btn_banner_fresh", use_container_width=True):
+                st.session_state["_ls_clear"] = True
+                try:
+                    st.query_params.clear()
+                except Exception:
+                    pass
+                st.rerun()
+        st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
+
+    # Clear the abandoned save if the visitor chose to start fresh
+    if st.session_state.pop("_ls_clear", False):
+        _components.html(
+            """
+            <script>
+            (function(){
+              try { window.parent.localStorage.removeItem('sa_audit_state'); } catch(e) {}
+            })();
+            </script>
+            """,
+            height=0,
+        )
+
+    st.markdown('<div class="sa-meta">For the company · Fifteen minutes · Six dimensions · Mostly quick ratings</div>', unsafe_allow_html=True)
     st.markdown("# An operator's diagnostic of the business itself.")
     st.markdown(
         '<p class="sa-lede">The Structural Audit is the companion to the Structural Advantage Index. '
-        'The Index reads the founder. This reads the company. Fifty-one questions across six dimensions, '
+        'The Index reads the founder. This reads the company. Fifty questions across six dimensions, '
         'weighted scoring, industry benchmarks where they exist, and a risk-ranked output that tells you '
         'what is load-bearing and what is quietly carrying disproportionate risk.</p>',
         unsafe_allow_html=True,
@@ -881,8 +1108,20 @@ This is an honest tool. You will be asked things you do not want to answer. The 
 - On-time, in-full delivery rate (%)
 - Mean time to resolve customer issues (hours)
 """)
-    if st.button("Begin the audit", use_container_width=False):
+    # Save/resume capability, advertised before the start — it is a
+    # differentiator, not a footnote.
+    st.markdown(
+        '<p class="sa-footnote" style="margin-bottom:0.8rem">Progress auto-saves in this browser. '
+        'A save code lets you stop midway and resume on any device. Nothing is lost.</p>',
+        unsafe_allow_html=True,
+    )
+    if st.button("Begin the audit", key="btn_begin", use_container_width=False):
         st.session_state["_audit_start"] = _time.time()
+        track("audit_started")
+        try:
+            st.query_params.clear()
+        except Exception:
+            pass
         go("context")
 
     # --- Resume previous audit ---
@@ -895,51 +1134,30 @@ This is an honest tool. You will be asked things you do not want to answer. The 
         )
         if st.button("Resume", key="btn_resume"):
             if resume_code and _decode_state(resume_code.strip()):
+                track("audit_resumed", origin="code")
                 st.rerun()
             else:
                 st.error("Invalid code. Please check and try again.")
-        # Auto-detect localStorage or URL ?code= param and offer one-click restore
+    # Auto-detect a saved audit in this browser. Runs once per tab session,
+    # only on a fresh page load, and hands the saved code to Python via a
+    # one-time reload with ?code=...&src=ls. The banner at the top of this
+    # screen does the rest. Explicit restore only — never silent.
+    if not _resume_payload and not st.session_state.get("_navigated") and not st.session_state.answers:
         _components.html(
             """
             <script>
             (function(){
               try {
-                // Check URL for ?code= param (takes priority over localStorage)
-                var urlCode = null;
-                try {
-                  var params = new URLSearchParams(window.parent.location.search);
-                  urlCode = params.get('code');
-                } catch(e) {}
-                var saved = urlCode || window.parent.localStorage.getItem('sa_audit_state');
-                if (saved) {
-                  var pd = window.parent.document;
-                  var inputs = pd.querySelectorAll('input[type="text"]');
-                  var resumeInput = null;
-                  for (var i = 0; i < inputs.length; i++) {
-                    if (inputs[i].placeholder && inputs[i].placeholder.indexOf('save code') !== -1) {
-                      resumeInput = inputs[i];
-                      break;
-                    }
-                  }
-                  if (resumeInput && !resumeInput.value) {
-                    var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                    nativeSetter.call(resumeInput, saved);
-                    resumeInput.dispatchEvent(new Event('input', { bubbles: true }));
-                  }
-                  var expanders = pd.querySelectorAll('[data-testid="stExpander"]');
-                  if (expanders.length > 0) {
-                    var exp = expanders[expanders.length - 1];
-                    if (!pd._saResumeHint) {
-                      pd._saResumeHint = true;
-                      var hint = pd.createElement('div');
-                      hint.style.cssText = 'font-family:Inter,sans-serif;font-size:0.88rem;color:#8B6A3F;margin:0 0 6px;padding:8px 12px;background:#FBF8F1;border:1px solid #D9CFBC';
-                      hint.textContent = urlCode
-                        ? 'A save code was found in the link. Open the panel below and click Resume to restore it.'
-                        : 'You have an audit in progress in this browser. Open the panel below and click Resume to pick up where you left off.';
-                      exp.parentElement.insertBefore(hint, exp);
-                    }
-                  }
-                }
+                var pw = window.parent;
+                var saved = pw.localStorage.getItem('sa_audit_state');
+                if (!saved) return;
+                if (pw.sessionStorage.getItem('sa_resume_offered')) return;
+                var url = new URL(pw.location.href);
+                if (url.searchParams.has('code')) return;
+                pw.sessionStorage.setItem('sa_resume_offered', '1');
+                url.searchParams.set('code', saved);
+                url.searchParams.set('src', 'ls');
+                pw.location.replace(url.toString());
               } catch(e) {}
             })();
             </script>
@@ -951,17 +1169,12 @@ This is an honest tool. You will be asked things you do not want to answer. The 
         "If you have not taken the Index yet, start there. Know your shape as an operator first. "
         "[Open the Index &rarr;](https://structuraladvantageindex.netlify.app/)",
     )
-    st.markdown(
-        '<p class="sa-footnote">Your progress is auto-saved in this browser. If you need to switch devices, '
-        'use the save code shown at the bottom of each section.</p>',
-        unsafe_allow_html=True,
-    )
 
 def screen_context():
     _install_parent_js(scroll=True, beforeunload=True, buttons=True)
     _save_to_localstorage()
     mark()
-    st.markdown('<div class="sa-meta">Step 1 of 8 . Company context</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sa-meta">Step 1 of 8 · Company context</div>', unsafe_allow_html=True)
     st.markdown("## Before the questions, a few pieces of context.")
     st.markdown(
         '<p class="sa-lede">The quantitative questions are scored against industry benchmarks. '
@@ -1035,6 +1248,12 @@ def screen_context():
             go("intro")
     with col2:
         if st.button("Continue to the audit", key="ctx_next", use_container_width=True, disabled=not ready):
+            track(
+                "context_completed",
+                industry=st.session_state.industry,
+                revenue=st.session_state.revenue,
+                intent=st.session_state.audit_intent,
+            )
             st.session_state.dim_idx = 0
             go("dim")
 
@@ -1148,7 +1367,7 @@ def screen_dimension():
     idx = st.session_state.dim_idx
     dim = DIMENSIONS[idx]
     total = len(DIMENSIONS)
-    st.markdown(f'<div class="sa-meta">Step {idx + 2} of {total + 2} . Dimension {idx + 1} of {total}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sa-meta">Step {idx + 2} of {total + 2} · Dimension {idx + 1} of {total}</div>', unsafe_allow_html=True)
     st.markdown(f"## {dim['name']}")
     st.markdown(f'<p class="sa-lede">{dim["summary"]}</p>', unsafe_allow_html=True)
     # Progress (consistent 1-8 scale: context=1, dims=2-7)
@@ -1164,7 +1383,8 @@ def screen_dimension():
             if ans not in (None, "N/A", ""):
                 answered_so_far += 1
     remaining_q = total_all_q - total_so_far
-    est_minutes = max(1, round(remaining_q * 20 / 60))
+    # 18s per question: 50 questions = 15 minutes, the canonical duration.
+    est_minutes = max(1, round(remaining_q * 18 / 60))
     time_label = f"~{est_minutes} min remaining" if est_minutes > 1 else "~1 min remaining"
     if idx > 0:
         st.caption(f"{answered_so_far} of {total_so_far} questions answered across {idx} completed dimension{'s' if idx > 1 else ''}. {time_label}.")
@@ -1206,7 +1426,7 @@ def screen_dimension():
     if st.button("Skip this dimension", key=f"dim_skip_{idx}"):
         for q in dim["questions"]:
             st.session_state.answers[q["id"]] = "N/A"
-        advance_dim()
+        advance_dim(skipped=True)
     # Save code for cross-device resume
     with st.expander("Save your progress"):
         code = _encode_state()
@@ -1232,6 +1452,66 @@ def screen_dimension():
         )
         st.caption("Paste this code on the intro screen to resume from any device.")
 
+def screen_gate():
+    """Soft gate between the last dimension and the full results.
+    Score teaser, then an optional name/email for the follow-up sequence,
+    with an explicit no-thanks path. The full results are never withheld —
+    this only adds the emailed follow-up. Mirrors the Index pattern."""
+    r = compute_results()
+    if r["overall"] is None:
+        # Not enough answered to score; the results screen owns that message.
+        go("results")
+        return
+    _install_parent_js(scroll=True, beforeunload=False, buttons=True)
+    _save_to_localstorage()
+    track("gate_viewed")
+    mark()
+    band_id, band_label, _band_narr = r["band"]
+    company = st.session_state.company or "The Company"
+    st.markdown('<div class="sa-meta">Results ready · The structural audit</div>', unsafe_allow_html=True)
+    st.markdown("# The audit is scored.")
+    st.markdown(f'<div class="sa-band sa-band--{band_id}">{band_label}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="sa-card sa-score-hero"><div class="label">Overall structural score</div>'
+        f'<div class="val">{r["overall"]:.1f}<span class="ten">/ 100</span></div></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<p class="sa-lede" style="font-size:1.15rem">One click below this sits the full read-out for {_html.escape(company)}: '
+        'dimension scores, the risk ranking, and the 90-day plan.</p>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "Before you open it, one optional step. Leave a name and an email and we will send the follow-up: "
+        "three short emails over the next ten days on what to do with this score, starting with the action "
+        "plan for this week."
+    )
+    st.text_input("Your name (optional)", key="gate_name", placeholder="First name is enough")
+    st.text_input("Email address", key="gate_email", placeholder="founder@yourcompany.com")
+    _gc1, _gc2 = st.columns(2)
+    with _gc1:
+        if st.button("Send the action plan and show my results", key="btn_gate_send", use_container_width=True):
+            _gate_email = (st.session_state.get("gate_email") or "").strip()
+            if re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', _gate_email):
+                _capture_email(
+                    _gate_email, company, band_label, r["overall"],
+                    name=(st.session_state.get("gate_name") or "").strip(),
+                )
+                st.session_state.gate_done = True
+                track("report_requested", where="gate")
+                go("results")
+            else:
+                st.warning("Please enter a valid email address.")
+    with _gc2:
+        if st.button("No thanks, just show the results", key="btn_gate_skip", use_container_width=True):
+            st.session_state.gate_declined = True
+            track("gate_declined")
+            go("results")
+    st.markdown(
+        '<p class="sa-footnote">No subscription. No upsell. The full results are yours either way.</p>',
+        unsafe_allow_html=True,
+    )
+
 def pct_bar(pct):
     pct = max(0.0, min(100.0, pct))
     return (
@@ -1243,8 +1523,17 @@ def screen_results():
     _save_to_localstorage()
     mark()
     _total_dims = len(DIMENSIONS)
-    st.markdown(f'<div class="sa-meta">Step {_total_dims + 2} of {_total_dims + 2} . Results</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sa-meta">Step {_total_dims + 2} of {_total_dims + 2} · Results</div>', unsafe_allow_html=True)
     r = compute_results()
+    if r["overall"] is not None:
+        track(
+            "results_viewed",
+            score=round(r["overall"], 1),
+            band=r["band"][0] if r["band"] else "",
+            industry=st.session_state.industry,
+            revenue=st.session_state.revenue,
+            intent=st.session_state.audit_intent,
+        )
     _raw_company = st.session_state.company or "The Company"
     company = _html.escape(_raw_company)  # safe for embedding in HTML
     _audit_date = _dt.date.today().strftime("%B %-d, %Y")
@@ -1792,6 +2081,7 @@ def screen_results():
         if st.button("Send me the action plan", key="btn_capture"):
             if email_val and re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email_val.strip()):
                 _capture_email(email_val, _raw_company, band_label, r["overall"])
+                track("report_requested", where="results_footer")
                 st.rerun()
             else:
                 st.warning("Please enter a valid email address.")
@@ -2137,7 +2427,8 @@ def screen_results():
                 st.session_state._confirm_new = False
                 for k in ["step", "company", "industry", "revenue", "respondent", "answers", "dim_idx",
                           "headcount", "ebitda_margin", "years_in_op", "owner_hours",
-                          "audit_intent", "email_captured"]:
+                          "audit_intent", "email_captured", "gate_declined", "gate_done",
+                          "gate_name", "gate_email", "capture_email", "_ph_sent"]:
                     if k in st.session_state:
                         del st.session_state[k]
                 _init()
@@ -2164,6 +2455,8 @@ elif step == "context":
     screen_context()
 elif step == "dim":
     screen_dimension()
+elif step == "gate":
+    screen_gate()
 elif step == "results":
     screen_results()
 else:

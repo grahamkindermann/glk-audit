@@ -8,12 +8,44 @@ A B2B operational diagnostic of the business itself, across six dimensions. Comp
 structural-audit/
   app.py                 Streamlit app. Entry point.
   rubric.py              All content, weights, bands, benchmarks. Edit here to change questions.
-  requirements.txt       Minimal deps. Just streamlit.
+  test_app.py            End-to-end test suite. Run before every push.
+  assets/favicon.png     Tab icon (the gold diamond mark).
+  requirements.txt       Minimal deps. Streamlit and requests.
   .streamlit/config.toml Theme and server config.
   README.md              This file.
 ```
 
 No auth, no Stripe, no database, no missing imports. It runs as-is.
+
+## Configuration (all optional, all silent no-ops when absent)
+
+Set these in Streamlit Cloud secrets, environment variables, or a local `.env`
+file (gitignored):
+
+```
+LOOPS_API_KEY          = "..."   # email capture -> Loops nurture drip
+POSTHOG_PROJECT_TOKEN  = "..."   # funnel analytics
+POSTHOG_HOST           = "https://us.i.posthog.com"
+```
+
+Funnel events fired (once per session each): `audit_started`,
+`context_completed`, `dimension_completed` (per dimension, with a `skipped`
+flag), `gate_viewed`, `report_requested`, `gate_declined`, `results_viewed`,
+`audit_resumed`. Review the funnel monthly; if any dimension bleeds more than
+20 percent of takers, tighten its question count.
+
+## Testing
+
+Run the suite before every push:
+
+```
+python3 test_app.py
+```
+
+It drives the full fifty-question flow end to end (intro, context, all six
+dimensions, the gate, results), checks scoring bounds on best and worst
+answer sets, verifies the Loops payload, and round-trips the save/resume
+codes.
 
 ## Run it locally
 
