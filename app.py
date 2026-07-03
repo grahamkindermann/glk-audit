@@ -445,13 +445,34 @@ def _install_head_meta():
         <script>
         (function(){{
           try {{
+            // Walk to the TOPMOST same-origin window. On Streamlit Cloud the
+            // app runs inside a hosting-shell iframe; the tab title and
+            // favicon live on the shell document, one level above the app.
             var pw = window.parent;
+            try {{
+              while (pw !== pw.parent) {{ void pw.parent.document; pw = pw.parent; }}
+            }} catch(e) {{}}
             var pd = pw.document;
+            var appDoc = window.parent.document;
             var DESIRED = {json.dumps(_PAGE_TITLE)};
             if (!pw._saTitleInstalled) {{
               pw._saTitleInstalled = true;
               var enforce = function() {{
                 if (pd.title !== DESIRED) pd.title = DESIRED;
+                try {{
+                  var srcIcon = appDoc.querySelector('link[rel*="icon"]');
+                  if (srcIcon && srcIcon.href) {{
+                    var cur = pd.querySelector('link[data-sa-favicon]');
+                    if (!cur || cur.href !== srcIcon.href) {{
+                      pd.querySelectorAll('link[rel*="icon"]').forEach(function(l) {{ l.remove(); }});
+                      var l = pd.createElement('link');
+                      l.rel = 'icon';
+                      l.href = srcIcon.href;
+                      l.setAttribute('data-sa-favicon', '1');
+                      pd.head.appendChild(l);
+                    }}
+                  }}
+                }} catch(e) {{}}
               }};
               enforce();
               var tEl = pd.querySelector('title');
@@ -1003,13 +1024,24 @@ def screen_intro():
 
     # --- Resume banner (?code= param, from a share link or the localStorage
     # redirect below). Restore is explicit — never silent. ---
-    _resume_qp, _resume_src = "", ""
+    _resume_qp, _resume_src, _resume_go = "", "", ""
     try:
         _resume_qp = st.query_params.get("code", "")
         _resume_src = st.query_params.get("src", "")
+        _resume_go = st.query_params.get("go", "")
     except Exception:
         pass
     _resume_payload = _peek_state(_resume_qp) if _resume_qp else None
+    # The in-browser banner (injected by JS below) already asked; its Resume
+    # link carries go=1. Restore immediately — the click was the confirmation.
+    if _resume_payload and _resume_src == "ls" and _resume_go == "1":
+        if _decode_state(_resume_qp):
+            track("audit_resumed", origin="banner")
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+            st.rerun()
     if _resume_payload and _resume_payload.get("s") in ("context", "dim", "gate", "results"):
         _saved_company = _resume_payload.get("c", "") or "an unnamed company"
         _saved_answers = _resume_payload.get("a", {})
@@ -1138,10 +1170,11 @@ This is an honest tool. You will be asked things you do not want to answer. The 
                 st.rerun()
             else:
                 st.error("Invalid code. Please check and try again.")
-    # Auto-detect a saved audit in this browser. Runs once per tab session,
-    # only on a fresh page load, and hands the saved code to Python via a
-    # one-time reload with ?code=...&src=ls. The banner at the top of this
-    # screen does the rest. Explicit restore only — never silent.
+    # Auto-detect a saved audit in this browser and offer to resume it.
+    # The offer is a banner injected into the parent DOM: sandboxed component
+    # iframes on Streamlit Cloud cannot navigate ancestor frames, so the
+    # Resume control is a plain link (?code=...&src=ls&go=1) that the USER
+    # clicks in the parent document. Explicit restore only — never silent.
     if not _resume_payload and not st.session_state.get("_navigated") and not st.session_state.answers:
         _components.html(
             """
@@ -1149,15 +1182,34 @@ This is an honest tool. You will be asked things you do not want to answer. The 
             (function(){
               try {
                 var pw = window.parent;
+                var pd = pw.document;
                 var saved = pw.localStorage.getItem('sa_audit_state');
                 if (!saved) return;
-                if (pw.sessionStorage.getItem('sa_resume_offered')) return;
-                var url = new URL(pw.location.href);
-                if (url.searchParams.has('code')) return;
-                pw.sessionStorage.setItem('sa_resume_offered', '1');
-                url.searchParams.set('code', saved);
-                url.searchParams.set('src', 'ls');
-                pw.location.replace(url.toString());
+                if (pw.sessionStorage.getItem('sa_resume_dismissed')) return;
+                var loc = new URL(pw.location.href);
+                if (loc.searchParams.has('code')) return;
+                if (pd.getElementById('sa-resume-offer')) return;
+                var main = pd.querySelector('section.stMain div.block-container') || pd.querySelector('section.stMain');
+                if (!main) return;
+                loc.searchParams.set('code', saved);
+                loc.searchParams.set('src', 'ls');
+                loc.searchParams.set('go', '1');
+                var div = pd.createElement('div');
+                div.id = 'sa-resume-offer';
+                div.style.cssText = 'border:1px solid #D9CFBC;border-left:3px solid #8B6A3F;background:#FBF8F1;padding:16px 20px;margin:0 0 1.6rem;font-family:Inter,system-ui,sans-serif';
+                div.innerHTML =
+                  '<div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:#6B6659;margin-bottom:6px">Audit in progress</div>'
+                  + '<p style="margin:0 0 12px;font-size:15px;line-height:1.5;color:#2A3758">This browser holds a saved audit. Pick up where you left off.</p>'
+                  + '<a href="' + loc.toString() + '" style="display:inline-block;background:#14223D;color:#F4EFE6;padding:10px 22px;font-size:14px;text-decoration:none;margin-right:10px">Resume the audit</a>'
+                  + '<button id="sa-resume-dismiss" style="background:transparent;border:1px solid #14223D;color:#14223D;padding:9px 22px;font-size:14px;cursor:pointer;font-family:Inter,system-ui,sans-serif">Start fresh</button>';
+                main.insertBefore(div, main.firstChild);
+                pd.getElementById('sa-resume-dismiss').addEventListener('click', function(){
+                  try {
+                    pw.localStorage.removeItem('sa_audit_state');
+                    pw.sessionStorage.setItem('sa_resume_dismissed', '1');
+                  } catch(e) {}
+                  div.remove();
+                });
               } catch(e) {}
             })();
             </script>

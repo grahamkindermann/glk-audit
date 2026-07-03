@@ -305,25 +305,39 @@ def test_save_code_roundtrip_including_mod4_lengths():
     assert 0 in seen_residues, "never produced a mod-4-length code; adjust the test"
     print(f"PASS  save-code round-trip across length residues {sorted(seen_residues)}")
 
-def test_resume_banner_via_query_param():
-    payload = {
+def _banner_payload():
+    return {
         "s": "dim", "c": "Banner Co", "i": INDUSTRY, "r": "$1M to $3M",
         "p": "", "d": 1, "a": {"per_01": 4, "per_02": 2},
         "hc": "", "em": "", "yo": "", "oh": "",
     }
-    code = _encode_payload(payload)
+
+def test_shared_link_shows_python_banner():
+    code = _encode_payload(_banner_payload())
     at = AppTest.from_file(APP, default_timeout=60)
-    at.query_params["code"] = code
-    at.query_params["src"] = "ls"
+    at.query_params["code"] = code  # a shared permalink: no src, no go
     at.run()
     text = page_text(at)
-    assert "This browser holds a saved audit for" in text, "banner missing"
+    assert "This link contains a saved audit for" in text, "shared-link banner missing"
     assert "Banner Co" in text and "2 of 50" in text, "banner detail wrong"
     click(at, "btn_banner_resume")
     assert at.session_state["step"] == "dim"
     assert at.session_state["dim_idx"] == 1
     assert at.session_state["company"] == "Banner Co"
-    print("PASS  resume banner restores a saved audit from the query param")
+    print("PASS  shared ?code= link shows the banner and restores on click")
+
+def test_local_resume_go_param_restores_immediately():
+    code = _encode_payload(_banner_payload())
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.query_params["code"] = code  # the injected JS banner's Resume link
+    at.query_params["src"] = "ls"
+    at.query_params["go"] = "1"
+    at.run()
+    # The user already clicked Resume in the browser banner; no second ask.
+    assert at.session_state["step"] == "dim", f"expected dim, got {at.session_state['step']}"
+    assert at.session_state["dim_idx"] == 1
+    assert at.session_state["company"] == "Banner Co"
+    print("PASS  in-browser Resume link (go=1) restores without a second confirm")
 
 def test_funnel_events_fire_once():
     SENT.clear()
@@ -375,7 +389,8 @@ if __name__ == "__main__":
         test_gate_rejects_invalid_email,
         test_insufficient_data_path,
         test_save_code_roundtrip_including_mod4_lengths,
-        test_resume_banner_via_query_param,
+        test_shared_link_shows_python_banner,
+        test_local_resume_go_param_restores_immediately,
         test_funnel_events_fire_once,
     ]
     failed = 0
