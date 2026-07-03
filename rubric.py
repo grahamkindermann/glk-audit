@@ -17,7 +17,7 @@ To change the product's behavior, edit (in order of how often you'll touch it):
 # Bump on any change to questions, weights, bands, or reverse flags so that
 # generated reports can be traced to the rubric that produced them.
 # ---------------------------------------------------------------------------
-RUBRIC_VERSION = "0.1.0"
+RUBRIC_VERSION = "1.0.0"
 
 # ---------------------------------------------------------------------------
 # Brand strings

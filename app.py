@@ -50,12 +50,12 @@ st.set_page_config(
 # Social / OG meta tags (body-level; Streamlit doesn't allow <head> injection)
 _SOCIAL_META = """
 <meta property="og:title" content="The Structural Audit: A diagnostic of the company, not the founder" />
-<meta property="og:description" content="Fifty questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
+<meta property="og:description" content="Fifty-one questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://structural-audit.streamlit.app/" />
 <meta name="twitter:card" content="summary" />
 <meta name="twitter:title" content="The Structural Audit" />
-<meta name="twitter:description" content="Fifty questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
+<meta name="twitter:description" content="Fifty-one questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
 """
 st.markdown(_SOCIAL_META, unsafe_allow_html=True)
 
@@ -567,6 +567,7 @@ def _encode_state():
         "oh": ss.get("owner_hours", ""),
         "ai": ss.get("audit_intent", ""),
         "ts": ss.get("_audit_start", None),
+        "ec": ss.get("email_captured", None),
     }
     raw = json.dumps(payload, separators=(",", ":")).encode()
     compressed = zlib.compress(raw, 9)
@@ -575,7 +576,7 @@ def _encode_state():
 def _decode_state(code):
     """Decode a resume code and populate session state. Returns True on success."""
     try:
-        padded = code + "=" * (4 - len(code) % 4)
+        padded = code + "=" * (-len(code) % 4)
         compressed = base64.urlsafe_b64decode(padded)
         raw = zlib.decompress(compressed)
         payload = json.loads(raw)
@@ -595,6 +596,9 @@ def _decode_state(code):
         _ts = payload.get("ts")
         if _ts is not None:
             ss["_audit_start"] = _ts
+        _ec = payload.get("ec")
+        if _ec is not None:
+            ss["email_captured"] = _ec
         return True
     except Exception:
         return False
@@ -836,7 +840,7 @@ def screen_intro():
     st.markdown("# An operator's diagnostic of the business itself.")
     st.markdown(
         '<p class="sa-lede">The Structural Audit is the companion to the Structural Advantage Index. '
-        'The Index reads the founder. This reads the company. Fifty questions across six dimensions, '
+        'The Index reads the founder. This reads the company. Fifty-one questions across six dimensions, '
         'weighted scoring, industry benchmarks where they exist, and a risk-ranked output that tells you '
         'what is load-bearing and what is quietly carrying disproportionate risk.</p>',
         unsafe_allow_html=True,
@@ -1037,7 +1041,6 @@ def screen_context():
 def render_question(q):
     qid = q["id"]
     current = st.session_state.answers.get(qid)
-    note = ""
     if q["type"] == "likert":
         options = ["—", "1", "2", "3", "4", "5"]
         if q.get("allow_na"):
@@ -1118,22 +1121,22 @@ def render_question(q):
                         _lower = q.get("lower_is_better", False)
                         if _lower:
                             if _num_val <= bench["p25"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Better than 75% of peers in your industry.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">&#10003; Better than 75% of peers in your industry.</p>', unsafe_allow_html=True)
                             elif _num_val <= bench["p50"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Better than the industry median.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">&#10003; Better than the industry median.</p>', unsafe_allow_html=True)
                             elif _num_val <= bench["p75"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">Below industry median.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">&#9888; Below industry median.</p>', unsafe_allow_html=True)
                             else:
-                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">Below 75% of peers in your industry.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">&#9888; Below 75% of peers in your industry.</p>', unsafe_allow_html=True)
                         else:
                             if _num_val >= bench["p75"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Better than 75% of peers in your industry.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">&#10003; Better than 75% of peers in your industry.</p>', unsafe_allow_html=True)
                             elif _num_val >= bench["p50"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">Better than the industry median.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">&#10003; Better than the industry median.</p>', unsafe_allow_html=True)
                             elif _num_val >= bench["p25"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">Below industry median.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">&#9888; Below industry median.</p>', unsafe_allow_html=True)
                             else:
-                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">Below 75% of peers in your industry.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">&#9888; Below 75% of peers in your industry.</p>', unsafe_allow_html=True)
             except ValueError:
                 st.session_state.answers[qid] = "N/A"
                 st.caption("Could not parse as a number. Enter a plain numeric value (e.g. 15, 500000). This question will be skipped.")
@@ -1239,6 +1242,8 @@ def screen_results():
     _install_parent_js(scroll=True, beforeunload=False, buttons=True)
     _save_to_localstorage()
     mark()
+    _total_dims = len(DIMENSIONS)
+    st.markdown(f'<div class="sa-meta">Step {_total_dims + 2} of {_total_dims + 2} . Results</div>', unsafe_allow_html=True)
     r = compute_results()
     _raw_company = st.session_state.company or "The Company"
     company = _html.escape(_raw_company)  # safe for embedding in HTML
@@ -1256,7 +1261,8 @@ def screen_results():
         f'<div class="sa-meta">Prepared for {company} · {_audit_date}{_elapsed_str}{_role_str} · Confidential</div>',
         unsafe_allow_html=True,
     )
-    st.markdown(f"# {_raw_company}. Structural Audit.")
+    _title_name = _raw_company.rstrip(".")
+    st.markdown(f"# {_title_name}. Structural Audit.")
     if r["overall"] is None:
         st.warning("Not enough of the audit was completed to generate a score. Return and answer more questions.")
         if st.button("Return to the audit"):
@@ -1640,24 +1646,25 @@ def screen_results():
             for q in dim_def["questions"]:
                 ans = answers.get(q["id"])
                 qs, flagged = score_question(q, ans, industry)
+                _q_short = _html.escape(q.get("text", q["id"])[:40])
                 if not flagged or qs is None:
-                    _heat_cells.append('<span style="display:inline-block;width:100%;height:6px;background:var(--hair)"></span>')
+                    _heat_cells.append(f'<span title="{_q_short}: skipped" aria-label="{_q_short}: skipped" style="display:inline-block;width:100%;height:6px;background:var(--hair)"></span>')
                 elif qs >= 0.75:
-                    _heat_cells.append('<span style="display:inline-block;width:100%;height:6px;background:#5A6B3F"></span>')
+                    _heat_cells.append(f'<span title="{_q_short}: strong" aria-label="{_q_short}: strong" style="display:inline-block;width:100%;height:6px;background:#5A6B3F"></span>')
                 elif qs >= 0.4:
-                    _heat_cells.append('<span style="display:inline-block;width:100%;height:6px;background:#B8872E"></span>')
+                    _heat_cells.append(f'<span title="{_q_short}: partial" aria-label="{_q_short}: partial" style="display:inline-block;width:100%;height:6px;background:#B8872E"></span>')
                 else:
-                    _heat_cells.append('<span style="display:inline-block;width:100%;height:6px;background:#7A2E20"></span>')
+                    _heat_cells.append(f'<span title="{_q_short}: gap" aria-label="{_q_short}: gap" style="display:inline-block;width:100%;height:6px;background:#7A2E20"></span>')
             _n_cells = len(_heat_cells)
             _heat_strip = (
-                f'<div style="display:grid;grid-template-columns:repeat({_n_cells},1fr);gap:2px;margin:6px 0 4px">'
+                f'<div role="img" aria-label="Per-question score breakdown for {_html.escape(d["name"])}" style="display:grid;grid-template-columns:repeat({_n_cells},1fr);gap:2px;margin:6px 0 4px">'
                 + "".join(_heat_cells)
                 + '</div>'
                 + '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:2px">Per-question breakdown: '
-                + '<span style="color:#5A6B3F">strong</span> · '
-                + '<span style="color:#B8872E">partial</span> · '
-                + '<span style="color:#7A2E20">gap</span> · '
-                + '<span style="color:var(--hair)">skipped</span></div>'
+                + '<span style="color:#5A6B3F">&#9632; strong</span> · '
+                + '<span style="color:#B8872E">&#9632; partial</span> · '
+                + '<span style="color:#7A2E20">&#9632; gap</span> · '
+                + '<span style="color:var(--hair)">&#9632; skipped</span></div>'
             )
             st.markdown(
                 f'<div class="sa-card"><div class="label">{d["name"]}</div>'
@@ -2055,7 +2062,7 @@ def screen_results():
             current_answers = st.session_state.answers.copy()
             current_industry = st.session_state.industry
             try:
-                padded = prev_code.strip() + "=" * (4 - len(prev_code.strip()) % 4)
+                padded = prev_code.strip() + "=" * (-len(prev_code.strip()) % 4)
                 compressed = base64.urlsafe_b64decode(padded)
                 raw = zlib.decompress(compressed)
                 prev_payload = json.loads(raw)
