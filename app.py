@@ -74,6 +74,15 @@ _META_DESCRIPTION = (
 )
 _FAVICON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "favicon.png")
 
+# Canonical URL for the app. Defaults to the custom domain; override with the
+# AUDIT_CANONICAL_URL env var / secret (e.g. during staging). The OG image is
+# served from Streamlit's static directory (enableStaticServing in config.toml).
+_CANONICAL_URL = _get_conf("AUDIT_CANONICAL_URL", "https://audit.grahamkindermann.com").rstrip("/")
+_OG_IMAGE_URL = f"{_CANONICAL_URL}/app/static/og-audit.png"
+# When "1", a visitor landing on the legacy *.streamlit.app host is redirected
+# to the canonical domain (top window). Leave "0" until DNS + hosting are live.
+_REDIRECT_LEGACY = _get_conf("AUDIT_REDIRECT_LEGACY", "0") == "1"
+
 st.set_page_config(
     page_title=_PAGE_TITLE,
     page_icon=_FAVICON if os.path.exists(_FAVICON) else "◆",
@@ -86,16 +95,20 @@ st.set_page_config(
 # link-preview support requires migration off Community Cloud. This block
 # covers regex-based scrapers; _install_head_meta() covers JS-rendering
 # crawlers and enforces the clean tab title.
-_SOCIAL_META = """
-<meta name="description" content="Fifty questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
+_SOCIAL_META = f"""
+<meta name="description" content="{_META_DESCRIPTION}" />
 <meta property="og:title" content="The Structural Audit: A diagnostic of the company, not the founder" />
-<meta property="og:description" content="Fifty questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
+<meta property="og:description" content="{_META_DESCRIPTION}" />
 <meta property="og:type" content="website" />
-<meta property="og:url" content="https://structural-audit.streamlit.app/" />
+<meta property="og:url" content="{_CANONICAL_URL}/" />
 <meta property="og:site_name" content="Structural Advantage" />
-<meta name="twitter:card" content="summary" />
+<meta property="og:image" content="{_OG_IMAGE_URL}" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="The Structural Audit" />
-<meta name="twitter:description" content="Fifty questions across six dimensions. Weighted scoring, industry benchmarks, risk-ranked output. An honest tool for operators." />
+<meta name="twitter:description" content="{_META_DESCRIPTION}" />
+<meta name="twitter:image" content="{_OG_IMAGE_URL}" />
 """
 st.markdown(_SOCIAL_META, unsafe_allow_html=True)
 
@@ -486,14 +499,29 @@ def _install_head_meta():
                 {{ property: "og:title", content: DESIRED }},
                 {{ property: "og:description", content: {json.dumps(_META_DESCRIPTION)} }},
                 {{ property: "og:type", content: "website" }},
-                {{ property: "og:url", content: "https://structural-audit.streamlit.app/" }},
-                {{ name: "twitter:card", content: "summary" }}
+                {{ property: "og:url", content: {json.dumps(_CANONICAL_URL + "/")} }},
+                {{ property: "og:image", content: {json.dumps(_OG_IMAGE_URL)} }},
+                {{ name: "twitter:card", content: "summary_large_image" }},
+                {{ name: "twitter:image", content: {json.dumps(_OG_IMAGE_URL)} }}
               ];
               metas.forEach(function(m) {{
                 var el = pd.createElement('meta');
                 Object.keys(m).forEach(function(k) {{ el.setAttribute(k, m[k]); }});
                 pd.head.appendChild(el);
               }});
+              var canonEl = pd.createElement('link');
+              canonEl.rel = 'canonical';
+              canonEl.href = {json.dumps(_CANONICAL_URL + "/")};
+              pd.head.appendChild(canonEl);
+            }}
+            if ({json.dumps(_REDIRECT_LEGACY)} === "1" || {str(_REDIRECT_LEGACY).lower()}) {{
+              try {{
+                var host = pw.location.hostname || "";
+                var canonHost = {json.dumps(_CANONICAL_URL)}.replace(/^https?:\\/\\//, "");
+                if (host.indexOf("streamlit.app") !== -1 && host !== canonHost) {{
+                  pw.location.replace({json.dumps(_CANONICAL_URL)} + "/");
+                }}
+              }} catch(e) {{}}
             }}
           }} catch(e) {{}}
         }})();

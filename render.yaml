@@ -1,0 +1,25 @@
+# Render Blueprint — deploy The Structural Audit behind audit.grahamkindermann.com
+# In the Render dashboard: New + → Blueprint → point at this repo.
+services:
+  - type: web
+    name: glk-structural-audit
+    runtime: docker
+    plan: starter          # ~$7/mo; always-on (free plan sleeps like Streamlit Cloud)
+    region: ohio
+    healthCheckPath: /_stcore/health
+    autoDeploy: true       # deploy on push to main
+    domains:
+      - audit.grahamkindermann.com
+    envVars:
+      - key: AUDIT_CANONICAL_URL
+        value: https://audit.grahamkindermann.com
+      - key: AUDIT_REDIRECT_LEGACY
+        value: "0"         # not used on Render; only meaningful on the legacy Streamlit Cloud app
+      # Set these in the dashboard (sync: false keeps values out of the repo).
+      # Same names the app reads via _get_conf():
+      - key: LOOPS_API_KEY
+        sync: false
+      - key: POSTHOG_PROJECT_TOKEN
+        sync: false
+      - key: POSTHOG_HOST
+        sync: false
