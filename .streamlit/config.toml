@@ -4,7 +4,10 @@ primaryColor = "#14223D"
 backgroundColor = "#F4EFE6"
 secondaryBackgroundColor = "#EAE2D3"
 textColor = "#14223D"
-font = "serif"
+# sans serif, not serif: every custom <div> in app.py (cards, band chip,
+# meta lines, risk blocks) inherits this, and the CSS only forces Inter on
+# p/li/label. With serif here the report rendered in three type families.
+font = "sans serif"
 
 [server]
 headless = true

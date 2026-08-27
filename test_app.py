@@ -190,17 +190,12 @@ def test_full_run_best_answers_hits_durable():
     at = fresh_app()
     fill_context(at)
     fill_all_dimensions(at, best_answer)
-    # Soft gate must appear with the score teaser
-    assert at.session_state["step"] == "gate", f"expected gate, got {at.session_state['step']}"
+    # The interstitial gate was retired in 1.1.0: the last dimension goes
+    # straight to the full results, and the single email ask lives there.
+    assert at.session_state["step"] == "results", f"expected results, got {at.session_state['step']}"
     text = page_text(at)
-    assert "The audit is scored." in text, "gate teaser headline missing"
-    assert "100.0" in text, "gate should tease the overall score"
-    assert "No subscription. No upsell." in text, "gate honesty footnote missing"
-    # Decline path: full results, nothing withheld
-    click(at, "btn_gate_skip")
-    assert at.session_state["step"] == "results"
-    assert ss_get(at, "gate_declined") is True
-    text = page_text(at)
+    assert "The audit is scored." not in text, "the retired gate screen came back"
+    assert "No subscription. No upsell." not in text, "retired gate copy still present"
     assert "Durable" in text, "best answers must land in the Durable band"
     assert "100.0" in text, "overall score missing from results"
     for section in RESULTS_SECTIONS:
@@ -215,8 +210,7 @@ def test_full_run_worst_answers_hits_critical():
     at = fresh_app()
     fill_context(at)
     fill_all_dimensions(at, worst_answer)
-    assert at.session_state["step"] == "gate"
-    click(at, "btn_gate_skip")
+    assert at.session_state["step"] == "results"
     text = page_text(at)
     assert "Critical" in text, "worst answers must land in the Critical band"
     assert "0.0" in text, "overall score missing"
@@ -224,18 +218,16 @@ def test_full_run_worst_answers_hits_critical():
     assert not at.exception
     print("PASS  full run, worst answers -> Critical results")
 
-def test_gate_email_optin_reaches_loops_with_name():
+def test_results_email_optin_reaches_loops_with_name():
     SENT.clear()
     at = fresh_app()
     fill_context(at, company="Optin Co")
     fill_all_dimensions(at, best_answer)
-    assert at.session_state["step"] == "gate"
-    at.text_input(key="gate_name").set_value("Graham Kindermann")
-    at.text_input(key="gate_email").set_value("test@example.com")
-    click(at, "btn_gate_send")
     assert at.session_state["step"] == "results"
+    at.text_input(key="capture_name").set_value("Graham Kindermann")
+    at.text_input(key="capture_email").set_value("test@example.com")
+    click(at, "btn_capture")
     assert ss_get(at, "email_captured") is True
-    assert ss_get(at, "gate_done") is True
     loops_calls = [p for p in SENT if "loops.so" in p["url"] and p["json"] and "email" in p["json"]]
     assert loops_calls, "no Loops contact call recorded"
     payload = loops_calls[0]["json"]
@@ -244,31 +236,34 @@ def test_gate_email_optin_reaches_loops_with_name():
     text = page_text(at)
     assert "Follow-up queued" in text, "footer should confirm the follow-up"
     assert not any(b.key == "btn_capture" for b in at.button), \
-        "footer must not re-ask for an email after the gate captured one"
+        "the form must not re-render after a successful capture"
     assert not at.exception
-    print("PASS  gate opt-in reaches Loops with name; footer confirms, no re-ask")
+    print("PASS  results opt-in reaches Loops with name; confirms, no re-ask")
 
-def test_gate_rejects_invalid_email():
+def test_results_rejects_invalid_email():
     at = fresh_app()
     fill_context(at)
     fill_all_dimensions(at, best_answer)
-    at.text_input(key="gate_email").set_value("not-an-email")
-    click(at, "btn_gate_send")
-    assert at.session_state["step"] == "gate", "invalid email must not pass the gate"
-    assert not ss_get(at, "email_captured")
-    print("PASS  gate rejects an invalid email and stays put")
+    at.text_input(key="capture_email").set_value("not-an-email")
+    # Click WITHOUT the usual trailing neutral run: the warning is rendered by
+    # the click's own script execution and is washed out by the next one.
+    _heal_stale_nodes(at)
+    at.button(key="btn_capture").click().run()
+    assert not ss_get(at, "email_captured"), "invalid email must not be captured"
+    assert any("valid email" in str(w.value) for w in at.warning), "no validation warning shown"
+    assert any(b.key == "btn_capture" for b in at.button), "form must stay open for a retry"
+    print("PASS  results form rejects an invalid email and stays open")
 
 def test_insufficient_data_path():
     at = fresh_app()
     fill_context(at, company="Skipper Co")
     for i in range(len(rubric.DIMENSIONS)):
         click(at, f"dim_skip_{i}")
-    # Gate must step aside when there is nothing to tease
     assert at.session_state["step"] == "results"
     assert any("Not enough of the audit" in str(w.value) for w in at.warning), \
         "insufficient-data warning missing"
     assert not at.exception
-    print("PASS  all-skip run bypasses the gate and shows the guardrail warning")
+    print("PASS  all-skip run shows the guardrail warning")
 
 def _encode_payload(payload):
     raw = json.dumps(payload, separators=(",", ":")).encode()
@@ -344,12 +339,11 @@ def test_funnel_events_fire_once():
     at = fresh_app()
     fill_context(at)
     fill_all_dimensions(at, best_answer)
-    click(at, "btn_gate_skip")
     events = [p["json"]["event"] for p in SENT if p["json"] and "event" in (p["json"] or {})]
     expected = (
         ["audit_started", "context_completed"]
         + ["dimension_completed"] * len(rubric.DIMENSIONS)
-        + ["gate_viewed", "gate_declined", "results_viewed"]
+        + ["results_viewed"]
     )
     assert sorted(events) == sorted(expected), f"funnel mismatch: {sorted(events)}"
     # Rerun the results screen; nothing new may fire
@@ -358,6 +352,246 @@ def test_funnel_events_fire_once():
     events_after = [p["json"].get("event") for p in SENT if p["json"]]
     assert len(SENT) == n, f"events double-fired on rerun: {events_after[n:]}"
     print(f"PASS  funnel events fire exactly once ({len(events)} events)")
+
+# ---------------------------------------------------------------------------
+# Regression guards for the August 2026 audit. Each one locks in a fix that is
+# invisible from the outside and easy to undo by accident.
+# ---------------------------------------------------------------------------
+def _oracle_score(q, ans):
+    """Independent re-implementation of the scoring rule, used as an oracle.
+
+    Deliberately NOT imported from app.py — the point is to check the app
+    against a second statement of the rule, not against itself.
+    """
+    if ans is None or ans in ("N/A", ""):
+        return None
+    if q["type"] == "likert":
+        raw = (float(ans) - 1.0) / 4.0
+    elif q["type"] == "yesno":
+        a = str(ans).strip().lower()
+        raw = 1.0 if a.startswith("y") else (rubric.YESNO_PARTIAL_SCORE if a.startswith("p") else 0.0)
+    else:
+        b = rubric.BENCHMARKS.get((INDUSTRY, q["id"]))
+        if not b:
+            return None
+        v, p25, p50, p75 = float(ans), b["p25"], b["p50"], b["p75"]
+        if q.get("lower_is_better"):
+            if v <= p25: raw = 1.0
+            elif v >= p75: raw = 0.0
+            elif v <= p50: raw = 1.0 - 0.5 * (v - p25) / (p50 - p25)
+            else: raw = 0.5 - 0.5 * (v - p50) / (p75 - p50)
+        else:
+            if v >= p75: raw = 1.0
+            elif v <= p25: raw = 0.0
+            elif v >= p50: raw = 0.5 + 0.5 * (v - p50) / (p75 - p50)
+            else: raw = 0.5 * (v - p25) / (p50 - p25)
+    if q.get("reverse"):
+        raw = 1.0 - raw
+    return max(0.0, min(1.0, raw))
+
+def _oracle(answers):
+    """Return (overall, [(q, dim, score, lever)]) for a full answer set."""
+    dims, scored = [], []
+    for d in rubric.DIMENSIONS:
+        tw = aw = ws = 0.0
+        items = []
+        for q in d["questions"]:
+            w = float(q["weight"]); tw += w
+            sc = _oracle_score(q, answers.get(q["id"]))
+            if sc is not None:
+                aw += w; ws += w * sc; items.append((q, d, sc))
+        ok = tw > 0 and aw / tw >= rubric.MINIMUM_ANSWERED_FRACTION
+        dims.append({"d": d, "aw": aw, "score": (ws / aw * 100) if ok else None})
+        # Items from an unscored dimension are still findings; they just carry
+        # lever 0, because an excluded dimension cannot move the overall.
+        scored.extend(items)
+    live = [x for x in dims if x["score"] is not None]
+    if not live:
+        return None, []
+    tot_w = sum(x["d"]["weight"] for x in live)
+    overall = sum(x["score"] * x["d"]["weight"] for x in live) / tot_w
+    by_id = {x["d"]["id"]: x for x in dims}
+    out = []
+    for q, d, sc in scored:
+        x = by_id[d["id"]]
+        lever = 0.0
+        if x["aw"] > 0 and x["score"] is not None:
+            lever = ((1 - sc) * float(q["weight"]) / x["aw"]) * 100.0 * x["d"]["weight"] / tot_w
+        out.append((q, d, sc, lever))
+    out.sort(key=lambda t: (t[3], (1 - t[2]) * float(t[0]["weight"])), reverse=True)
+    return overall, out
+
+def _profile(likert, yesno, metric):
+    """metric: 'best' | 'med' | 'worst', resolved per question direction."""
+    a = {}
+    for d in rubric.DIMENSIONS:
+        for q in d["questions"]:
+            if q["type"] == "likert":
+                a[q["id"]] = likert
+            elif q["type"] == "yesno":
+                a[q["id"]] = yesno
+            else:
+                b = rubric.BENCHMARKS[(INDUSTRY, q["id"])]
+                lo = q.get("lower_is_better", False)
+                key = {"best": ("p25" if lo else "p75"),
+                       "med": "p50",
+                       "worst": ("p75" if lo else "p25")}[metric]
+                a[q["id"]] = float(b[key])
+    return a
+
+def _band_of(score):
+    for _bid, lo, hi, label in rubric.BANDS:
+        if lo <= score < hi:
+            return label
+    return None
+
+def test_no_vendor_or_legacy_hosts():
+    """No user-facing string may point at the Streamlit or Netlify host.
+
+    The custom-domain migration left three of these on the results page: the
+    share summary, the Copy-link button, and the print footer -- exactly the
+    three artefacts a user forwards to their board.
+    """
+    src = open(APP, encoding="utf-8").read()
+    for host in ("structural-audit.streamlit.app", "structuraladvantageindex.netlify.app"):
+        assert host not in src, f"vendor host still referenced in app.py: {host}"
+    rub = open(os.path.join(os.path.dirname(APP), "rubric.py"), encoding="utf-8").read()
+    for host in ("streamlit.app", "netlify.app"):
+        assert host not in rub, f"vendor host still referenced in rubric.py: {host}"
+    # The legacy-host redirect must carry the query string, or turning it on
+    # discards every shared ?code= audit.
+    assert "pw.location.search" in src, "legacy redirect drops the query string"
+    print("PASS  no vendor or legacy hosts; legacy redirect preserves ?code=")
+
+def test_no_reverse_scored_items():
+    """A lone reverse-scored item among fifty is a mis-answer trap, not a
+    validity check. If one is reintroduced, the Likert caption must change."""
+    rev = [q["id"] for d in rubric.DIMENSIONS for q in d["questions"] if q.get("reverse")]
+    assert not rev, f"reverse-scored items reintroduced without a UI cue: {rev}"
+    print("PASS  no reverse-scored items")
+
+def test_band_threshold_text_derives_from_bands():
+    """The methodology text must not restate the thresholds as literals.
+
+    BANDS uses half-open intervals, so a hardcoded 'Fragile (41-60)' left every
+    band with nine tenths of a point displayed outside its stated range.
+    """
+    src = open(APP, encoding="utf-8").read()
+    for stale in ('"Critical (0–40), "', '"Fragile (41–60), "', '"Functional (61–75), "'):
+        assert stale not in src, f"hardcoded band range still present: {stale}"
+    assert "for _bid, _lo, _hi, _label in BANDS:" in src, \
+        "band threshold text is no longer derived from BANDS"
+    # And no score can fall outside the band it is displayed in.
+    for bid, lo, hi, label in rubric.BANDS:
+        for probe in (lo, (lo + hi) / 2, hi - 0.1):
+            assert _band_of(probe) == label, f"{probe} not in {label}"
+    print("PASS  band threshold text derives from BANDS; no gaps")
+
+def test_yesno_partial_credit():
+    """'Partly' must score half, and must be reachable in the UI."""
+    q = {"id": "x", "type": "yesno", "weight": 1.0}
+    assert _oracle_score(q, "Yes") == 1.0
+    assert _oracle_score(q, "No") == 0.0
+    assert _oracle_score(q, rubric.YESNO_PARTIAL_LABEL) == rubric.YESNO_PARTIAL_SCORE
+    src = open(APP, encoding="utf-8").read()
+    assert 'options = ["Skip", "Yes", YESNO_PARTIAL_LABEL, "No"]' in src, \
+        "the Partly option is not offered in the yes/no widget"
+    # Partly (0.5) sits inside the opportunity window, so yes/no questions can
+    # now surface as opportunities. Before this they never could.
+    assert rubric.RISK_THRESHOLD <= rubric.YESNO_PARTIAL_SCORE < rubric.OPPORTUNITY_CEILING
+    print("PASS  yes/no partial credit scores 0.5 and is reachable")
+
+def test_median_business_is_not_critical():
+    """A business at the industry median everywhere must not read Critical.
+
+    Median inputs producing a bottom-band output was the calibration defect
+    behind the (now removed) 'bottom 15% of businesses' claim.
+    """
+    overall, _ = _oracle(_profile(3, rubric.YESNO_PARTIAL_LABEL, "med"))
+    assert overall is not None
+    assert abs(overall - 50.0) < 0.01, f"median profile should score 50.0, got {overall:.2f}"
+    assert _band_of(overall) != "Critical", "a median business still reads Critical"
+    # Sanity: the ladder still discriminates at both ends.
+    worst, _ = _oracle(_profile(1, "No", "worst"))
+    best, _ = _oracle(_profile(5, "Yes", "best"))
+    assert _band_of(worst) == "Critical", f"worst profile scored {worst:.1f}"
+    assert _band_of(best) == "Durable", f"best profile scored {best:.1f}"
+    print(f"PASS  median business scores {overall:.1f} ({_band_of(overall)}); "
+          f"worst {worst:.1f}, best {best:.1f}")
+
+def test_risk_ranking_uses_dimension_weight():
+    """The item named 'Biggest lever' must actually be the biggest lever.
+
+    Risks used to be ranked by (1 - score) * question_weight, ignoring the
+    dimension weight that the callout one paragraph below DID apply -- so the
+    two disagreed, and the disagreement drove the 90-day plan.
+    """
+    answers = _profile(3, "No", "med")
+    overall, ranked = _oracle(answers)
+    risks = [t for t in ranked if t[2] < rubric.RISK_THRESHOLD]
+    assert risks, "profile produced no risks; test is not exercising the path"
+    top_by_lever = risks[0]
+    top_by_old_rule = max(risks, key=lambda t: (1 - t[2]) * float(t[0]["weight"]))
+    # Drive the real app to the same state and read what it reports.
+    payload = {"s": "results", "c": "Lever Co", "i": INDUSTRY, "r": REVENUE, "p": "CEO",
+               "d": len(rubric.DIMENSIONS), "a": answers, "hc": "", "em": "", "yo": "",
+               "oh": "", "ai": "", "ts": None, "ec": None, "rv": rubric.RUBRIC_VERSION}
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.query_params["code"] = _encode_payload(payload)
+    at.query_params["src"] = "ls"
+    at.query_params["go"] = "1"
+    at.run()
+    text = page_text(at)
+    assert "Biggest lever." in text, "biggest-lever callout missing"
+    lever_para = [str(m.value) for m in at.markdown if "Biggest lever." in str(m.value)][0]
+    assert top_by_lever[0]["text"] in lever_para, (
+        f"callout names the wrong question.\n"
+        f"  reported : {lever_para[:160]}\n"
+        f"  expected : {top_by_lever[0]['id']} ({top_by_lever[3]:.2f} pts)")
+    if top_by_old_rule[0]["id"] != top_by_lever[0]["id"]:
+        print(f"      (old rule would have named {top_by_old_rule[0]['id']} at "
+              f"{top_by_old_rule[3]:.2f} pts vs the true {top_by_lever[3]:.2f})")
+    print(f"PASS  biggest lever is {top_by_lever[0]['id']} ({top_by_lever[3]:.2f} pts)")
+
+def test_partial_dimension_still_surfaces_its_risks():
+    """A half-answered dimension is excluded from the SCORE, not from the report.
+
+    It would be worse than useless to hide "tax filings are not current"
+    because the visitor only got through half of the Finance questions.
+    """
+    answers = _profile(5, "Yes", "best")          # strong everywhere...
+    fin = [d for d in rubric.DIMENSIONS if d["id"] == "finance"][0]
+    for q in fin["questions"][3:]:                # ...but Finance half-abandoned
+        answers[q["id"]] = "N/A"
+    answers["fin_01"] = 1                         # with one severe gap left in
+    answers["per_01"] = 2                         # and a real gap that IS scored
+    overall, ranked = _oracle(answers)
+    by_id = {t[0]["id"]: t for t in ranked}
+    ids = [t[0]["id"] for t in ranked]
+    assert "fin_01" in ids, "a risk in an unscored dimension was dropped"
+    assert by_id["fin_01"][3] == 0.0, \
+        "an excluded dimension must not claim it can move the overall score"
+    assert by_id["per_01"][3] > 0.0, "a scored gap should carry a real lever"
+    assert ids.index("per_01") < ids.index("fin_01"), \
+        "lever-0 items must rank below anything that can move the score"
+    print("PASS  risks in an unscored dimension surface, ranked below levered ones")
+
+def test_css_selectors_match_current_streamlit():
+    """Streamlit renamed section.main to section.stMain at 1.36.
+
+    Three CSS rules and the whole print stylesheet still targeted the old
+    name, so the 760px measure and the print layout silently did nothing.
+    """
+    src = open(APP, encoding="utf-8").read()
+    assert "section.main" not in src, "stale section.main selector still present"
+    assert src.count("section.stMain > div.block-container") >= 3
+    # hidden keeps the label box in the layout; collapsed removes it. Measured
+    # at 51px per Likert question, thirty times over.
+    assert 'label_visibility="hidden"' not in src, "label_visibility=hidden reintroduced"
+    assert src.count('label_visibility="collapsed"') >= 3
+    # .sa-lede loses to the generic `p {...!important}` rule without this.
+    assert 'font-size: 1.3rem !important' in src, ".sa-lede is overridable again"
+    print("PASS  CSS selectors, label visibility and .sa-lede specificity")
 
 def test_rubric_integrity():
     total = sum(len(d["questions"]) for d in rubric.DIMENSIONS)
@@ -386,10 +620,18 @@ if __name__ == "__main__":
     tests = [
         test_rubric_integrity,
         test_copy_conventions,
+        test_no_vendor_or_legacy_hosts,
+        test_no_reverse_scored_items,
+        test_band_threshold_text_derives_from_bands,
+        test_yesno_partial_credit,
+        test_median_business_is_not_critical,
+        test_risk_ranking_uses_dimension_weight,
+        test_partial_dimension_still_surfaces_its_risks,
+        test_css_selectors_match_current_streamlit,
         test_full_run_best_answers_hits_durable,
         test_full_run_worst_answers_hits_critical,
-        test_gate_email_optin_reaches_loops_with_name,
-        test_gate_rejects_invalid_email,
+        test_results_email_optin_reaches_loops_with_name,
+        test_results_rejects_invalid_email,
         test_insufficient_data_path,
         test_save_code_roundtrip_including_mod4_lengths,
         test_shared_link_shows_python_banner,

@@ -14,10 +14,12 @@ To change the product's behavior, edit (in order of how often you'll touch it):
 
 # ---------------------------------------------------------------------------
 # Version
-# Bump on any change to questions, weights, bands, or reverse flags so that
-# generated reports can be traced to the rubric that produced them.
+# Bump on any change to questions, weights, bands, reverse flags or the
+# answer scales, so a report can be traced to the rubric that produced it.
+# The save code carries this value; the app warns when a code was written
+# under a different version, because reworded questions do not compare.
 # ---------------------------------------------------------------------------
-RUBRIC_VERSION = "1.0.0"
+RUBRIC_VERSION = "1.1.0"
 
 # ---------------------------------------------------------------------------
 # Brand strings
@@ -31,14 +33,26 @@ BRAND = {
 # ---------------------------------------------------------------------------
 # CTA blocks
 # ---------------------------------------------------------------------------
+# The label here is the single source of truth for what the call is called:
+# it drives the results button and the shareable summary. Keep it in step with
+# the Calendly event title. UTMs are not stored here — app.py's _utm() stamps
+# them at click time with the screen or band that produced the click.
 CTA = {
     "lead_magnet": {
         "headline": "Ready for the conversation behind the score?",
-        "primary_label": "Book a 30-min structural review",
+        "primary_label": "Book a 30-minute fit call",
         "primary_url":   "https://calendly.com/gkholdingsllcva/advisory-intro",
         "secondary_label": "Subscribe to Structural Advantage",
         "secondary_url":   "https://structuraladvantage.substack.com/",
     },
+}
+
+# Companion tools, on owned subdomains. Never link the vendor hosts.
+LINKS = {
+    "index":     "https://index.grahamkindermann.com/",
+    "substack":  "https://structuraladvantage.substack.com/",
+    "calendly":  "https://calendly.com/gkholdingsllcva/advisory-intro",
+    "privacy":   "https://grahamkindermann.com/privacy",
 }
 
 # ---------------------------------------------------------------------------
@@ -67,6 +81,16 @@ INSUFFICIENT_DATA_LABEL = "Insufficient Data"
 RISK_THRESHOLD = 0.4
 # Opportunities: questions scoring at or above RISK_THRESHOLD but below this ceiling.
 OPPORTUNITY_CEILING = 0.75
+
+# Yes/no questions are not binary in practice. "Partly" carries half credit so
+# that a business with the thing half in place is not scored identically to one
+# that has never attempted it. Without this, a median business is forced onto
+# "No" across thirteen questions and scores in the Critical band.
+YESNO_PARTIAL_SCORE = 0.5
+YESNO_PARTIAL_LABEL = "Partly"
+YESNO_PARTIAL_HINT = (
+    "Partly = in place, but inconsistent, undocumented, or not yet true everywhere."
+)
 
 # ---------------------------------------------------------------------------
 # Band narratives (two-sentence executive-summary interpretation keyed off
@@ -105,15 +129,28 @@ BAND_NARRATIVE = {
 # Question schema:
 #   {
 #       "id":               "per_01",
+#       "group":            "Owner Dependency & Leadership",  # section heading
 #       "text":             "...",
-#       "type":             "likert" | "yesno",
+#       "type":             "likert" | "yesno" | "number" | "percent",
 #       "weight":           float,
-#       "reverse":          bool,   # see app.py score_question() for rules
 #       "allow_na":         bool,
 #       "risk_copy":        "...",  # shown when question surfaces as a risk
 #       "opportunity_copy": "...",
-#       "recommendation":   "...",
+#       "recommendation":   "...",  # must be an ACTION, not a reflection prompt
+#
+#       # likert / yesno only:
+#       "reverse":          bool,   # agreement (or "yes") scores as a gap.
+#                                   # Avoid: a lone reversed item among fifty
+#                                   # same-direction items is a mis-answer trap.
+#       # number / percent only:
+#       "lower_is_better":  bool,   # direction for benchmark scoring
+#                                   # requires a BENCHMARKS entry for every
+#                                   # (industry, question_id) pair
 #   }
+#
+# Scoring: likert 1-5 maps linearly to 0.0-1.0. yesno maps Yes 1.0 /
+# Partly YESNO_PARTIAL_SCORE / No 0.0. number and percent interpolate against
+# the industry p25/p50/p75 benchmark. See app.py score_question().
 # ---------------------------------------------------------------------------
 DIMENSIONS = [
     {
@@ -180,7 +217,7 @@ DIMENSIONS = [
                 "allow_na": True,
                 "risk_copy": "Tolerating underperformance is a tax every A-player on the team pays daily.",
                 "opportunity_copy": "One honest underperformance decision resets the standards of the entire team.",
-                "recommendation": "Ask yourself: if this person quit tomorrow, would you be relieved? If yes, act on it.",
+                "recommendation": "Name the one person you would be relieved to lose, set a written 30-day bar with them this week, and hold the date.",
             },
             {
                 "id": "per_06",
@@ -553,10 +590,15 @@ DIMENSIONS = [
             {
                 "id": "sal_02",
                 "group": "Pipeline & Targeting",
-                "text": "Deals above a meaningful size usually require my personal involvement to close.",
+                # Reworded positively in rubric 1.1.0. Was reverse-scored, and
+                # was the only reversed item among fifty — a mis-answer trap
+                # after forty questions where 5 meant "good". Save codes from
+                # rubric 1.0.x score this question inverted; the app warns on
+                # a version mismatch rather than silently mis-scoring.
+                "text": "Deals above a meaningful size close without my personal involvement.",
                 "type": "likert",
                 "weight": 1.8,
-                "reverse": True,
+                "reverse": False,
                 "allow_na": True,
                 "risk_copy": "Deal-closing owner dependency is a silent ceiling on revenue growth and a major red flag to buyers.",
                 "opportunity_copy": "Building a second closer is the single highest-leverage sales move available in an owner-dependent shop.",
@@ -771,13 +813,23 @@ DIMENSIONS = [
 #
 # Keyed by (industry, question_id). Each entry has p25/p50/p75 values.
 # Used by app.py to compute percentile-based scores for quantitative
-# questions. Values are reasonable estimates for v0.2; refine with real
-# data as it accumulates.
+# questions.
+#
+# PROVENANCE: these are directional estimates assembled from published
+# industry ranges and operating experience, not a proprietary dataset and not
+# a survey of audit takers. BENCHMARK_DISCLOSURE below is shown to the user
+# wherever a benchmark is displayed. Replace with measured percentiles once
+# enough audits have accumulated, and bump RUBRIC_VERSION when you do.
 #
 # Convention: lower-is-better metrics (days_to_close, churn, etc.) have
 # p25 as the *best* value and p75 as the *worst*. The scoring engine
 # handles directionality via the "lower_is_better" flag on each question.
 # ---------------------------------------------------------------------------
+BENCHMARK_DISCLOSURE = (
+    "Benchmarks are directional estimates drawn from published industry ranges, "
+    "not a proprietary dataset."
+)
+
 INDUSTRY_LIST = [
     "SaaS", "Professional Services", "Manufacturing",
     "Retail / E-commerce", "Healthcare", "Financial Services",

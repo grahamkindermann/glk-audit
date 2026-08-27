@@ -1,2 +1,6 @@
-streamlit>=1.32,<2.0
+# Upper bound is deliberate: st.components.v1.html is deprecated
+# ("will be removed after 2026-06-01") and every piece of this app's chrome
+# runs through it. Do not raise this bound without migrating _frame() in
+# app.py to st.iframe and re-running the browser pass.
+streamlit>=1.32,<1.63
 requests>=2.27

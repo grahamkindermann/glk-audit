@@ -27,13 +27,18 @@ from rubric import (
     BANDS,
     BAND_NARRATIVE,
     BENCHMARKS,
+    BENCHMARK_DISCLOSURE,
     INDUSTRY_LIST,
     MINIMUM_ANSWERED_FRACTION,
     INSUFFICIENT_DATA_LABEL,
     RISK_THRESHOLD,
     OPPORTUNITY_CEILING,
+    YESNO_PARTIAL_SCORE,
+    YESNO_PARTIAL_LABEL,
+    YESNO_PARTIAL_HINT,
     BRAND,
     CTA,
+    LINKS,
     RUBRIC_VERSION,
 )
 
@@ -82,6 +87,13 @@ _OG_IMAGE_URL = f"{_CANONICAL_URL}/app/static/og-audit.png"
 # When "1", a visitor landing on the legacy *.streamlit.app host is redirected
 # to the canonical domain (top window). Leave "0" until DNS + hosting are live.
 _REDIRECT_LEGACY = _get_conf("AUDIT_REDIRECT_LEGACY", "0") == "1"
+
+# Outbound attribution. Every other property in the stack (Substack posts,
+# grahamkindermann.com) stamps UTMs on links into the tools; the tools stamped
+# nothing on the way back out, so tool-originated traffic was invisible.
+def _utm(url: str, campaign: str, medium: str = "tool") -> str:
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}utm_source=audit&utm_medium={medium}&utm_campaign={campaign}"
 
 st.set_page_config(
     page_title=_PAGE_TITLE,
@@ -135,7 +147,7 @@ CSS = """
   font-family: "Inter", system-ui, sans-serif !important;
 }
 
-section.main > div.block-container {
+section.stMain > div.block-container {
   max-width: 760px !important;
   padding-top: 3.5rem !important;
   padding-bottom: 6rem !important;
@@ -156,6 +168,17 @@ p, li, label, .stMarkdown, [data-testid="stMarkdownContainer"] p {
   font-size: 1.02rem !important;
   line-height: 1.55 !important;
   color: var(--ink-2) !important;
+}
+
+/* Every class below is applied to a raw <div>, which the `p, li, label` rule
+   does not match, so without this they inherit Streamlit's theme font. The
+   theme font is declared in .streamlit/config.toml; do not rely on it. More
+   specific rules further down (.sa-card .val, .sa-risk .q) still win where
+   Fraunces is wanted. */
+.sa-meta, .sa-footnote, .sa-card, .sa-card .label, .sa-band,
+.sa-risk, .sa-opp, .sa-risk .copy, .sa-opp .copy, .sa-rec,
+.sa-group, .sa-heat-legend, .sa-bench-line, .sa-exec, .sa-lever {
+  font-family: "Inter", system-ui, sans-serif;
 }
 
 .sa-mark {
@@ -184,21 +207,62 @@ p, li, label, .stMarkdown, [data-testid="stMarkdownContainer"] p {
   margin: 0 0 10px;
 }
 
+/* Specificity matters here, not just !important. The generic body rule above
+   includes `[data-testid="stMarkdownContainer"] p` (0,1,1), which OUTRANKS a
+   bare `.sa-lede` (0,1,0) even when both carry !important — which is why the
+   lede rendered as plain 1.02rem Inter everywhere. Matching the container
+   explicitly takes it to (0,2,1). The doubled class keeps the rule winning if
+   the element is ever rendered outside a markdown container. */
+[data-testid="stMarkdownContainer"] p.sa-lede,
+p.sa-lede.sa-lede,
 .sa-lede {
-  font-family: "Fraunces", Georgia, serif;
-  font-weight: 300;
-  font-size: 1.3rem;
-  line-height: 1.45;
-  color: var(--ink-2);
+  font-family: "Fraunces", Georgia, serif !important;
+  font-weight: 300 !important;
+  font-size: 1.3rem !important;
+  line-height: 1.45 !important;
+  color: var(--ink-2) !important;
   max-width: 620px;
   margin-bottom: 2rem;
 }
 
+[data-testid="stMarkdownContainer"] p.sa-footnote,
+p.sa-footnote.sa-footnote,
 .sa-footnote {
-  font-size: 0.85rem;
-  color: var(--muted);
+  font-family: "Inter", system-ui, sans-serif !important;
+  font-size: 0.85rem !important;
+  line-height: 1.5 !important;
+  color: var(--muted) !important;
   font-style: italic;
 }
+
+/* Section heading inside a dimension. Was rendered in a fixed-height component
+   iframe, which clipped descenders and sat 8px off the text column. */
+.sa-group {
+  font-family: "Fraunces", Georgia, serif !important;
+  font-size: 1.05rem;
+  font-weight: 400;
+  color: var(--accent);
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+  margin: 1.6rem 0 0.2rem;
+  padding: 0;
+}
+
+/* Per-question heat strip under each dimension score. */
+.sa-heat {
+  display: grid;
+  gap: 2px;
+  margin: 12px 0 6px;
+}
+.sa-heat span { display: block; height: 6px; }
+.sa-heat-legend {
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.sa-heat-legend b { font-weight: 500; }
+.sa-heat-legend .k { color: var(--ink-2); }
+.sa-bench-line { font-size: 0.82rem; margin-top: 6px; }
 
 .sa-rule {
   border: 0;
@@ -392,7 +456,7 @@ div.stButton.sa-link > button:hover * {
 
 /* --- Responsive: tablet ≤768px --- */
 @media (max-width: 768px) {
-  section.main > div.block-container {
+  section.stMain > div.block-container {
     padding-top: 2rem !important;
     padding-bottom: 3rem !important;
   }
@@ -413,7 +477,7 @@ div.stButton.sa-link > button:hover * {
 
 /* --- Responsive: phone ≤480px --- */
 @media (max-width: 480px) {
-  section.main > div.block-container {
+  section.stMain > div.block-container {
     padding-top: 1.2rem !important;
     padding-bottom: 2rem !important;
   }
@@ -449,11 +513,39 @@ st.markdown(CSS, unsafe_allow_html=True)
 
 import streamlit.components.v1 as _components
 
+# st.components.v1.html is deprecated ("will be removed after 2026-06-01") in
+# favour of st.iframe. Every piece of this app's chrome — scroll reset, badge
+# hiding, the radar, the table of contents, the copy and print buttons, the
+# resume banner — runs through it, so its removal in any 1.x release would
+# take all of that with it. Route through one wrapper that prefers st.iframe
+# where it exists and falls back on older Streamlit.
+# st.components.v1.html is deprecated ("will be removed after 2026-06-01") in
+# favour of st.iframe, and every piece of this app's chrome runs through it:
+# scroll reset, badge hiding, the radar, the table of contents, the copy and
+# print buttons, the resume banner. It is NOT a drop-in swap, verified in a
+# browser on Streamlit 1.62:
+#   * st.iframe rejects height=0, and most frames here are invisible JS
+#     carriers;
+#   * Streamlit rewrites the iframe's className on every rerun under
+#     st.iframe, so the radar's `classList.add("sa-radar-iframe")` does not
+#     survive — and the print stylesheet keys off that class, so the chart
+#     silently disappears from every printed report.
+# requirements.txt pins below the release that would remove components.html.
+# Migrating means re-homing the radar's print marker onto the parent element
+# (which does survive, as the sticky table of contents proves) and giving the
+# zero-height frames a real height. Do it as its own change, with a browser
+# pass, not inside a content release.
+def _frame(html: str, height=0):
+    """Embed an HTML/JS fragment. height may be an int or "content"."""
+    if height == "content":
+        height = 340
+    return _components.html(html, height=height)
+
 def _install_head_meta():
     """Enforce a clean tab title (Streamlit Cloud appends a vendor suffix) and
     inject head-level meta for JS-rendering crawlers. Installs once per page
     load; the title observer re-asserts after every rerun."""
-    _components.html(
+    _frame(
         f"""
         <script>
         (function(){{
@@ -514,12 +606,16 @@ def _install_head_meta():
               canonEl.href = {json.dumps(_CANONICAL_URL + "/")};
               pd.head.appendChild(canonEl);
             }}
-            if ({json.dumps(_REDIRECT_LEGACY)} === "1" || {str(_REDIRECT_LEGACY).lower()}) {{
+            if ({str(_REDIRECT_LEGACY).lower()}) {{
               try {{
                 var host = pw.location.hostname || "";
                 var canonHost = {json.dumps(_CANONICAL_URL)}.replace(/^https?:\\/\\//, "");
                 if (host.indexOf("streamlit.app") !== -1 && host !== canonHost) {{
-                  pw.location.replace({json.dumps(_CANONICAL_URL)} + "/");
+                  // Preserve search + hash. A shared audit lives entirely in
+                  // ?code=, so dropping the query discards the audit itself.
+                  pw.location.replace(
+                    {json.dumps(_CANONICAL_URL)} + "/" + (pw.location.search || "") + (pw.location.hash || "")
+                  );
                 }}
               }} catch(e) {{}}
             }}
@@ -575,37 +671,6 @@ def _install_parent_js(scroll=True, beforeunload=True, buttons=True, hide_chrome
               if (w === w.parent) break;
               w = w.parent;
             }
-            // Nuclear: hide any small fixed/absolute element in bottom-right corner
-            function hideCornerJunk(doc) {
-              try {
-                var all = doc.querySelectorAll('*');
-                var vw = doc.defaultView.innerWidth;
-                var vh = doc.defaultView.innerHeight;
-                for (var el of all) {
-                  var cst = doc.defaultView.getComputedStyle(el);
-                  if (cst.position !== 'fixed' && cst.position !== 'absolute') continue;
-                  var r = el.getBoundingClientRect();
-                  if (r.width > 0 && r.width < 300 && r.height > 0 && r.height < 200 &&
-                      r.right > vw - 200 && r.bottom > vh - 100) {
-                    el.style.setProperty('display', 'none', 'important');
-                  }
-                }
-              } catch(e) {}
-            }
-            var w2 = window;
-            while (w2) {
-              try { hideCornerJunk(w2.document); } catch(e) { break; }
-              if (w2 === w2.parent) break;
-              w2 = w2.parent;
-            }
-            setTimeout(function(){
-              var w3 = window;
-              while (w3) {
-                try { hideCornerJunk(w3.document); } catch(e) { break; }
-                if (w3 === w3.parent) break;
-                w3 = w3.parent;
-              }
-            }, 3000);
           })();""")
     if scroll:
         parts.append("""
@@ -677,7 +742,7 @@ def _install_parent_js(scroll=True, beforeunload=True, buttons=True, hide_chrome
             pd.body.appendChild(btag);
           }""")
     js_body = "\n".join(parts)
-    _components.html(
+    _frame(
         f"""
         <script>
         (function(){{
@@ -713,6 +778,7 @@ def _encode_state():
         "ai": ss.get("audit_intent", ""),
         "ts": ss.get("_audit_start", None),
         "ec": ss.get("email_captured", None),
+        "rv": RUBRIC_VERSION,
     }
     raw = json.dumps(payload, separators=(",", ":")).encode()
     compressed = zlib.compress(raw, 9)
@@ -754,6 +820,10 @@ def _decode_state(code):
         _ec = payload.get("ec")
         if _ec is not None:
             ss["email_captured"] = _ec
+        # Codes written before 1.1.0 carry no version. Questions can be
+        # reworded between rubrics (sal_02 was reverse-scored until 1.1.0), so
+        # an old code can score differently than it did when it was saved.
+        ss["_saved_rubric_version"] = payload.get("rv", "1.0.x")
         return True
     except Exception:
         return False
@@ -763,7 +833,7 @@ def _save_to_localstorage():
     to localStorage. Runs silently on every screen render."""
     code = _encode_state()
     _safe_code = json.dumps(code)
-    _components.html(
+    _frame(
         f"""
         <script>
         (function(){{
@@ -817,12 +887,11 @@ def advance_dim(skipped=False):
         )
     ss.dim_idx += 1
     if ss.dim_idx >= len(DIMENSIONS):
-        # Soft gate before the full results: score teaser + optional email.
-        # Never shown twice — once resolved (either way), go straight through.
-        if ss.get("email_captured") or ss.get("gate_declined") or ss.get("gate_done"):
-            ss.step = "results"
-        else:
-            ss.step = "gate"
+        # No interstitial gate. It closed with "No subscription. No upsell."
+        # one screen before an email capture and a booking CTA, and anyone who
+        # declined was asked again on the results page anyway. One ask, on the
+        # results page, after the value has been delivered.
+        ss.step = "results"
     st.rerun()
 
 def back_dim():
@@ -858,7 +927,15 @@ def score_question(q, answer, industry):
                 raw = 1.0 - raw
             return max(0.0, min(1.0, raw)), True
         if t == "yesno":
-            raw = 1.0 if str(answer).lower().startswith("y") else 0.0
+            _a = str(answer).strip().lower()
+            if _a.startswith("y"):
+                raw = 1.0
+            elif _a.startswith(YESNO_PARTIAL_LABEL[0].lower()):
+                # "Partly" — half credit. A business with the thing partly in
+                # place is not the same as one that has never attempted it.
+                raw = YESNO_PARTIAL_SCORE
+            else:
+                raw = 0.0
             if reverse:
                 raw = 1.0 - raw
             return raw, True
@@ -899,20 +976,29 @@ def compute_results():
       {
         "overall": float 0..100 or None,
         "band": (id, label, narrative) or None,
-        "dimensions": [ { id, name, score 0..100 or None, weight } ],
-        "risks": [ (q, dim, score) ... ],
-        "opportunities": [ (q, dim, score) ... ],
+        "dimensions": [ { id, name, score 0..100 or None, weight, answered_weight } ],
+        "risks": [ (q, dim, score, lever) ... ],
+        "opportunities": [ (q, dim, score, lever) ... ],
+        "skipped": [ dimension names excluded for insufficient data ],
       }
+
+    `lever` is the number of points the OVERALL score would gain if that one
+    question moved to full marks, holding everything else constant. Risks and
+    opportunities are both ranked by it. Ranking by question weight alone
+    (the pre-1.1.0 behaviour) ignored dimension weight, so the least-weighted
+    dimension could supply the headline risk, the "biggest lever" callout and
+    the first item of the 90-day plan.
     """
     ss = st.session_state
     industry = ss.industry
     answers = ss.answers
     dim_results = []
-    scored_q = []
+    scored_q = []   # (q, dim, score, dim_id) — lever filled in below
     for dim in DIMENSIONS:
         total_weight = 0.0
         answered_weight = 0.0
         weighted_sum = 0.0
+        dim_scored = []
         for q in dim["questions"]:
             w = float(q.get("weight", 1.0))
             total_weight += w
@@ -921,46 +1007,67 @@ def compute_results():
             if flagged and score is not None:
                 answered_weight += w
                 weighted_sum += w * score
-                scored_q.append((q, dim, score))
+                dim_scored.append((q, dim, score))
         if total_weight == 0 or answered_weight / total_weight < MINIMUM_ANSWERED_FRACTION:
             dim_results.append({
                 "id": dim["id"], "name": dim["name"],
                 "weight": dim["weight"], "score": None,
+                "answered_weight": answered_weight,
             })
+            # Answers in an unscored dimension still surface as findings. They
+            # get lever 0 — an excluded dimension genuinely cannot move the
+            # overall score — so they rank below everything that can, but a
+            # real gap is not hidden just because the dimension was left
+            # half-answered.
+            scored_q.extend(dim_scored)
         else:
             dim_score = (weighted_sum / answered_weight) * 100.0
             dim_results.append({
                 "id": dim["id"], "name": dim["name"],
                 "weight": dim["weight"], "score": dim_score,
+                "answered_weight": answered_weight,
             })
+            scored_q.extend(dim_scored)
     # Overall: weighted average of scored dimensions
     scored_dims = [d for d in dim_results if d["score"] is not None]
+    skipped = [d["name"] for d in dim_results if d["score"] is None]
     if not scored_dims:
-        overall = None
-        band = None
-    else:
-        total_w = sum(d["weight"] for d in scored_dims)
-        overall = sum(d["score"] * d["weight"] for d in scored_dims) / total_w
-        band = None
-        for bid, lo, hi, label in BANDS:
-            if lo <= overall < hi:
-                band = (bid, label, BAND_NARRATIVE.get(bid, ""))
-                break
-    # Risks: answered questions with lowest score, weighted
-    risks_ranked = sorted(
-        scored_q,
-        key=lambda t: ((1.0 - t[2]) * float(t[0].get("weight", 1.0))),
-        reverse=True,
-    )
-    risks = [r for r in risks_ranked if r[2] < RISK_THRESHOLD][:6]
-    # Opportunities: partially in place but room to improve; no overlap with risks
-    opps = [r for r in risks_ranked if RISK_THRESHOLD <= r[2] < OPPORTUNITY_CEILING][:6]
+        return {
+            "overall": None, "band": None, "dimensions": dim_results,
+            "risks": [], "opportunities": [], "skipped": skipped,
+        }
+    total_w = sum(d["weight"] for d in scored_dims)
+    overall = sum(d["score"] * d["weight"] for d in scored_dims) / total_w
+    band = None
+    for bid, lo, hi, label in BANDS:
+        if lo <= overall < hi:
+            band = (bid, label, BAND_NARRATIVE.get(bid, ""))
+            break
+    # Attach each question's overall-score lever.
+    dim_by_id = {d["id"]: d for d in dim_results}
+    ranked = []
+    for q, dim, score in scored_q:
+        dr = dim_by_id[dim["id"]]
+        aw = dr["answered_weight"]
+        lever = 0.0
+        if aw > 0 and dr["score"] is not None:
+            dim_gain = ((1.0 - score) * float(q.get("weight", 1.0)) / aw) * 100.0
+            lever = dim_gain * dr["weight"] / total_w
+        ranked.append((q, dim, score, lever))
+    # Primary key is the lever. The tie-break keeps items from excluded
+    # dimensions (lever 0) in a sensible order among themselves.
+    ranked.sort(key=lambda t: (t[3], (1.0 - t[2]) * float(t[0].get("weight", 1.0))),
+                reverse=True)
+    risks = [r for r in ranked if r[2] < RISK_THRESHOLD][:6]
+    # Opportunities: partially in place; no overlap with risks by construction.
+    opps = [r for r in ranked if RISK_THRESHOLD <= r[2] < OPPORTUNITY_CEILING][:6]
     return {
         "overall": overall,
         "band": band,
         "dimensions": dim_results,
         "risks": risks,
         "opportunities": opps,
+        "skipped": skipped,
     }
 
 # ---------------------------------------------------------------------------
@@ -1005,7 +1112,11 @@ def _capture_email(email: str, company: str, band: str, score: float, name: str 
     """Send lead to Loops for nurture drip. Fails silently — no error shown to user."""
     api_key = _get_conf("LOOPS_API_KEY")
     if not api_key:
-        # No key configured; don't show false confirmation
+        # No key configured. Mark it soft_fail rather than returning silently:
+        # leaving email_captured unset made the results page re-render the
+        # capture form, so the visitor was asked a second time with no hint
+        # that anything had gone wrong.
+        st.session_state.email_captured = "soft_fail"
         return
     try:
         payload = {
@@ -1092,6 +1203,12 @@ def screen_intro():
         )
         _rc1, _rc2 = st.columns(2)
         with _rc1:
+            _saved_rv = _resume_payload.get("rv", "1.0.x")
+            if _saved_rv != RUBRIC_VERSION:
+                st.caption(
+                    f"Saved on rubric {_saved_rv}; the audit now runs {RUBRIC_VERSION}. "
+                    "One sales question was reworded, so check that answer before trusting the score."
+                )
             if st.button("Restore this audit", key="btn_banner_resume", use_container_width=True):
                 if _decode_state(_resume_qp):
                     track("audit_resumed", origin="banner" if _resume_src == "ls" else "link")
@@ -1112,7 +1229,7 @@ def screen_intro():
 
     # Clear the abandoned save if the visitor chose to start fresh
     if st.session_state.pop("_ls_clear", False):
-        _components.html(
+        _frame(
             """
             <script>
             (function(){
@@ -1123,7 +1240,7 @@ def screen_intro():
             height=0,
         )
 
-    st.markdown('<div class="sa-meta">For the company · Fifteen to twenty minutes · Six dimensions · Mostly quick ratings</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sa-meta">For the company · Fifteen to twenty minutes · Six dimensions</div>', unsafe_allow_html=True)
     st.markdown("# An operator's diagnostic of the business itself.")
     st.markdown(
         '<p class="sa-lede">The Structural Audit is the companion to the Structural Advantage Index. '
@@ -1177,7 +1294,18 @@ This is an honest tool. You will be asked things you do not want to answer. The 
     )
     if st.button("Begin the audit", key="btn_begin", use_container_width=False):
         st.session_state["_audit_start"] = _time.time()
-        track("audit_started")
+        # Capture inbound attribution BEFORE clearing the query string —
+        # grahamkindermann.com/tools and every Substack post send utm_* here.
+        _utm_props = {}
+        try:
+            for _k in ("utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"):
+                _v = st.query_params.get(_k, "")
+                if _v:
+                    _utm_props[_k] = _v
+        except Exception:
+            pass
+        st.session_state["_utm"] = _utm_props
+        track("audit_started", **_utm_props)
         try:
             st.query_params.clear()
         except Exception:
@@ -1204,7 +1332,7 @@ This is an honest tool. You will be asked things you do not want to answer. The 
     # Resume control is a plain link (?code=...&src=ls&go=1) that the USER
     # clicks in the parent document. Explicit restore only — never silent.
     if not _resume_payload and not st.session_state.get("_navigated") and not st.session_state.answers:
-        _components.html(
+        _frame(
             """
             <script>
             (function(){
@@ -1247,7 +1375,7 @@ This is an honest tool. You will be asked things you do not want to answer. The 
 
     st.markdown(
         "If you have not taken the Index yet, start there. Know your shape as an operator first. "
-        "[Open the Index &rarr;](https://structuraladvantageindex.netlify.app/)",
+        f"[Open the Index &rarr;]({_utm(LINKS['index'], 'audit_intro', 'cross_tool')})",
     )
 
 def screen_context():
@@ -1338,51 +1466,69 @@ def screen_context():
             go("dim")
 
 def render_question(q):
+    """Render one question.
+
+    All three question types get identical typography: the text in bold via
+    st.markdown, and the widget's own label collapsed. Before 1.1.0, Likert
+    questions were bold (markdown) while yes/no and metric questions inherited
+    the widget label's regular weight, so three type treatments appeared in one
+    list. `label_visibility="collapsed"` rather than `"hidden"`: hidden keeps
+    the label's box in the layout, which added a measured 51px of dead space
+    to every one of the thirty Likert questions.
+    """
     qid = q["id"]
     current = st.session_state.answers.get(qid)
+    st.markdown(f"**{q['text']}**")
+
     if q["type"] == "likert":
-        options = ["—", "1", "2", "3", "4", "5"]
+        # "Skip" is the unanswered placeholder for every type. N/A sits last
+        # and means "this genuinely does not apply", which is a different
+        # statement — and used to be the pre-selected default here.
+        options = ["Skip", "1", "2", "3", "4", "5"]
         if q.get("allow_na"):
-            options = ["N/A", "1", "2", "3", "4", "5"]
-        idx = 0  # default to placeholder (unanswered)
+            options.append("N/A")
+        idx = 0
         if isinstance(current, (int, float)):
             label = str(int(current))
             if label in options:
                 idx = options.index(label)
-        elif current == "N/A":
-            idx = options.index("N/A") if "N/A" in options else 0
-        st.markdown(f"**{q['text']}**")
+        elif current == "N/A" and "N/A" in options:
+            idx = options.index("N/A")
         st.caption("1 = Strongly disagree · 5 = Strongly agree")
-        choice = st.radio(q["text"], options, index=idx, key=f"rad_{qid}", horizontal=True, label_visibility="hidden")
-        if choice == "—":
+        choice = st.radio(
+            q["text"], options, index=idx, key=f"rad_{qid}",
+            horizontal=True, label_visibility="collapsed",
+        )
+        if choice == "Skip":
             st.session_state.answers[qid] = None
         elif choice == "N/A":
             st.session_state.answers[qid] = "N/A"
         else:
             st.session_state.answers[qid] = int(choice)
+
     elif q["type"] == "yesno":
-        options = ["Skip", "Yes", "No"]
+        options = ["Skip", "Yes", YESNO_PARTIAL_LABEL, "No"]
         if q.get("allow_na"):
-            options = ["Skip", "Yes", "No", "N/A"]
-        if current in ("Yes", "No", "N/A"):
-            idx = options.index(current)
-        else:
-            idx = 0  # "Skip" placeholder = unanswered
-        choice = st.radio(q["text"], options, index=idx, key=f"rad_{qid}", horizontal=True)
-        if choice == "Skip":
-            st.session_state.answers[qid] = None
-        else:
-            st.session_state.answers[qid] = choice
+            options.append("N/A")
+        idx = options.index(current) if current in options and current != "Skip" else 0
+        st.caption(YESNO_PARTIAL_HINT)
+        choice = st.radio(
+            q["text"], options, index=idx, key=f"rad_{qid}",
+            horizontal=True, label_visibility="collapsed",
+        )
+        st.session_state.answers[qid] = None if choice == "Skip" else choice
+
     elif q["type"] in ("number", "percent"):
         bench = BENCHMARKS.get((st.session_state.industry, qid))
         placeholder = "e.g. 15" if q["type"] == "percent" else "e.g. 500000"
         if bench:
             placeholder = f"e.g. {bench['p50']}"
         val = st.text_input(
-            q["text"] + " (blank to skip)",
+            q["text"],
             value="" if current in (None, "N/A") else str(current),
             key=f"num_{qid}",
             placeholder=placeholder,
+            label_visibility="collapsed",
         )
         if bench:
             _BENCH_UNITS = {
@@ -1396,7 +1542,13 @@ def render_question(q):
             }
             _u = _BENCH_UNITS.get(qid, "")
             _fmt = lambda v: f"${v:,.0f}" if qid == "sal_q_cac" else f"{v:g}{_u}"
-            st.caption(f"Industry benchmark: 25th: {_fmt(bench['p25'])} · Median: {_fmt(bench['p50'])} · 75th: {_fmt(bench['p75'])}")
+            # The three numbers run low-to-high either way, so the good end
+            # flips between questions. Say which end is good.
+            _dir = "lower is better" if q.get("lower_is_better") else "higher is better"
+            st.caption(
+                f"Industry benchmark ({_dir}): 25th: {_fmt(bench['p25'])} · "
+                f"Median: {_fmt(bench['p50'])} · 75th: {_fmt(bench['p75'])}"
+            )
         cleaned = val.strip().replace(",", "").replace("$", "").replace("%", "").replace("~", "")
         # Handle k/K and m/M suffixes for thousands and millions
         _k_match = re.match(r'^([0-9]*\.?[0-9]+)[kK]$', cleaned)
@@ -1415,27 +1567,37 @@ def render_question(q):
                     st.caption("Value must be zero or positive. This question will be skipped.")
                 else:
                     st.session_state.answers[qid] = _num_val
+                    # A percentage entered as a decimal (0.15 for 15%) scores as
+                    # near-perfect and says nothing. Flag it rather than guess.
+                    if (q["type"] == "percent" and bench and 0 < _num_val < 1
+                            and float(bench["p25"]) >= 1):
+                        st.markdown(
+                            f'<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">'
+                            f'&#9888; Entered as {_num_val:g}. If you meant '
+                            f'{_num_val * 100:g}%, enter {_num_val * 100:g}.</p>',
+                            unsafe_allow_html=True,
+                        )
                     # Inline benchmark feedback
                     if bench:
                         _lower = q.get("lower_is_better", False)
                         if _lower:
                             if _num_val <= bench["p25"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">&#10003; Better than 75% of peers in your industry.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#4A5A32;margin:2px 0 0">&#10003; Better than 75% of peers in your industry.</p>', unsafe_allow_html=True)
                             elif _num_val <= bench["p50"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">&#10003; Better than the industry median.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#4A5A32;margin:2px 0 0">&#10003; Better than the industry median.</p>', unsafe_allow_html=True)
                             elif _num_val <= bench["p75"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">&#9888; Below industry median.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#8A6420;margin:2px 0 0">&#9888; Worse than the industry median.</p>', unsafe_allow_html=True)
                             else:
-                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">&#9888; Below 75% of peers in your industry.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">&#9888; Worse than 75% of peers in your industry.</p>', unsafe_allow_html=True)
                         else:
                             if _num_val >= bench["p75"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">&#10003; Better than 75% of peers in your industry.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#4A5A32;margin:2px 0 0">&#10003; Better than 75% of peers in your industry.</p>', unsafe_allow_html=True)
                             elif _num_val >= bench["p50"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#5A6B3F;margin:2px 0 0">&#10003; Better than the industry median.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#4A5A32;margin:2px 0 0">&#10003; Better than the industry median.</p>', unsafe_allow_html=True)
                             elif _num_val >= bench["p25"]:
-                                st.markdown('<p style="font-size:0.85rem;color:#B8872E;margin:2px 0 0">&#9888; Below industry median.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#8A6420;margin:2px 0 0">&#9888; Worse than the industry median.</p>', unsafe_allow_html=True)
                             else:
-                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">&#9888; Below 75% of peers in your industry.</p>', unsafe_allow_html=True)
+                                st.markdown('<p style="font-size:0.85rem;color:#7A2E20;margin:2px 0 0">&#9888; Worse than 75% of peers in your industry.</p>', unsafe_allow_html=True)
             except ValueError:
                 st.session_state.answers[qid] = "N/A"
                 st.caption("Could not parse as a number. Enter a plain numeric value (e.g. 15, 500000). This question will be skipped.")
@@ -1477,12 +1639,19 @@ def screen_dimension():
     for qi, q in enumerate(dim["questions"], 1):
         _grp = q.get("group")
         if _grp and _grp != _last_group:
-            _components.html(
-                f'<p style="font-family:Fraunces,Georgia,serif;font-size:1.05rem;font-weight:400;'
-                f'color:#8B6A3F;margin:0;padding:0;letter-spacing:0.01em;line-height:1.4">{_grp}</p>'
-                '<script>try{var f=window.frameElement;if(f){var h=document.body.scrollHeight;if(h>0)f.style.height=h+"px"}}catch(e){}</script>',
-                height=38,
+            # Plain markup, not a component iframe. At height=38 the iframe
+            # clipped the descenders of "Team Quality & Retention" and sat
+            # ~8px right of the text column, because it was the only element
+            # on the page rendered in an iframe.
+            st.markdown(
+                f'<p class="sa-group">{_html.escape(_grp)}</p>',
+                unsafe_allow_html=True,
             )
+            # "(blank to skip)" used to be appended to all eleven metric
+            # labels. Say it once, per metric group.
+            if all(gq["type"] in ("number", "percent")
+                   for gq in dim["questions"] if gq.get("group") == _grp):
+                st.caption("Estimates are fine. Leave any of these blank to skip.")
             _last_group = _grp
         st.markdown(
             f'<p style="font-size:0.85rem;letter-spacing:0.12em;text-transform:uppercase;'
@@ -1503,17 +1672,12 @@ def screen_dimension():
         label = "Continue" if idx < total - 1 else "See results"
         if st.button(label, key=f"dim_next_{idx}", use_container_width=True):
             advance_dim()
-    # Skip dimension (below nav, styled as link — less prominent than primary actions)
-    if st.button("Skip this dimension", key=f"dim_skip_{idx}"):
-        for q in dim["questions"]:
-            st.session_state.answers[q["id"]] = "N/A"
-        advance_dim(skipped=True)
     # Save code for cross-device resume
     with st.expander("Save your progress"):
         code = _encode_state()
         _safe_code = json.dumps(code)
         st.code(code, language=None)
-        _components.html(
+        _frame(
             f"""
             <style>
             body {{ margin:0; padding:0; background:transparent; }}
@@ -1532,65 +1696,20 @@ def screen_dimension():
             height=42,
         )
         st.caption("Paste this code on the intro screen to resume from any device.")
+        st.caption(
+            "The code contains your answers. Treat it like the report."
+        )
 
-def screen_gate():
-    """Soft gate between the last dimension and the full results.
-    Score teaser, then an optional name/email for the follow-up sequence,
-    with an explicit no-thanks path. The full results are never withheld —
-    this only adds the emailed follow-up. Mirrors the Index pattern."""
-    r = compute_results()
-    if r["overall"] is None:
-        # Not enough answered to score; the results screen owns that message.
-        go("results")
-        return
-    _install_parent_js(scroll=True, beforeunload=False, buttons=True)
-    _save_to_localstorage()
-    track("gate_viewed")
-    mark()
-    band_id, band_label, _band_narr = r["band"]
-    company = st.session_state.company or "The Company"
-    st.markdown('<div class="sa-meta">Results ready · The structural audit</div>', unsafe_allow_html=True)
-    st.markdown("# The audit is scored.")
-    st.markdown(f'<div class="sa-band sa-band--{band_id}">{band_label}</div>', unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="sa-card sa-score-hero"><div class="label">Overall structural score</div>'
-        f'<div class="val">{r["overall"]:.1f}<span class="ten">/ 100</span></div></div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f'<p class="sa-lede" style="font-size:1.15rem">One click below this sits the full read-out for {_html.escape(company)}: '
-        'dimension scores, the risk ranking, and the 90-day plan.</p>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "Before you open it, one optional step. Leave a name and an email and we will send the follow-up: "
-        "three short emails over the next ten days on what to do with this score, starting with the action "
-        "plan for this week."
-    )
-    st.text_input("Your name (optional)", key="gate_name", placeholder="First name is enough")
-    st.text_input("Email address", key="gate_email", placeholder="founder@yourcompany.com")
-    _gc1, _gc2 = st.columns(2)
-    with _gc1:
-        if st.button("Send the action plan and show my results", key="btn_gate_send", use_container_width=True):
-            _gate_email = (st.session_state.get("gate_email") or "").strip()
-            if re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', _gate_email):
-                _capture_email(
-                    _gate_email, company, band_label, r["overall"],
-                    name=(st.session_state.get("gate_name") or "").strip(),
-                )
-                st.session_state.gate_done = True
-                track("report_requested", where="gate")
-                go("results")
-            else:
-                st.warning("Please enter a valid email address.")
-    with _gc2:
-        if st.button("No thanks, just show the results", key="btn_gate_skip", use_container_width=True):
-            st.session_state.gate_declined = True
-            track("gate_declined")
-            go("results")
-    st.markdown(
-        '<p class="sa-footnote">No subscription. No upsell. The full results are yours either way.</p>',
-        unsafe_allow_html=True,
+    # Skip dimension. Below the save block rather than directly under the
+    # primary action: a skipped dimension is EXCLUDED from the overall score
+    # rather than scored as zero, so it nudges the score up slightly. Say so.
+    if st.button("Skip this dimension", key=f"dim_skip_{idx}"):
+        for q in dim["questions"]:
+            st.session_state.answers[q["id"]] = "N/A"
+        advance_dim(skipped=True)
+    st.caption(
+        "Skipping excludes this dimension from the overall score rather than "
+        "scoring it zero. The report names any dimension that was skipped."
     )
 
 def pct_bar(pct):
@@ -1617,13 +1736,19 @@ def screen_results():
         )
     _raw_company = st.session_state.company or "The Company"
     company = _html.escape(_raw_company)  # safe for embedding in HTML
-    _audit_date = _dt.date.today().strftime("%B %-d, %Y")
+    # %-d is a glibc/BSD extension and raises ValueError on Windows.
+    _today = _dt.date.today()
+    _audit_date = f"{_today:%B} {_today.day}, {_today:%Y}"
     # Time-spent calculation
+    # _audit_start is wall-clock from the first "Begin", and it survives in the
+    # save code, so a resumed audit would otherwise report elapsed calendar
+    # time ("Completed in 4320 minutes"). Only claim a duration when it is
+    # plausibly a single sitting.
     _start = st.session_state.get("_audit_start")
     _elapsed_str = ""
     if _start:
         _elapsed_min = int((_time.time() - _start) / 60)
-        if _elapsed_min >= 1:
+        if 1 <= _elapsed_min <= 120:
             _elapsed_str = f" · Completed in {_elapsed_min} minute{'s' if _elapsed_min != 1 else ''}"
     _respondent = st.session_state.get("respondent", "")
     _role_str = f" · Completed by: {_html.escape(_respondent)}" if _respondent else ""
@@ -1656,7 +1781,7 @@ def screen_results():
         unsafe_allow_html=True,
     )
     # Animated count-up on score reveal
-    _components.html(
+    _frame(
         f"""<script>
         (function(){{
           try {{
@@ -1682,23 +1807,33 @@ def screen_results():
         </script>""",
         height=0,
     )
-    # Percentile ranking language
-    _BAND_PERCENTILE = {
-        "critical": "typically in the bottom 15% of businesses at this revenue band",
-        "fragile": "typically in the lower third of businesses at this revenue band",
-        "functional": "consistent with the middle of the pack at this revenue band",
-        "strong": "consistent with the top quarter of businesses at this revenue band",
-        "durable": "consistent with the top 10% of businesses at this revenue band",
-    }
-    _pctl_text = _BAND_PERCENTILE.get(band_id, "")
-    if _pctl_text:
-        st.markdown(
-            f'<p style="font-size:1.05rem;color:var(--ink);margin:0.5rem 0 0.8rem">'
-            f'This places {company} <strong>{_pctl_text}</strong>.</p>',
-            unsafe_allow_html=True,
-        )
+    # NOTE: there is deliberately no peer-percentile claim here. Until enough
+    # audits have accumulated to build a real distribution, the tool has no
+    # cohort to rank anyone against, and revenue band is not an input to the
+    # score at all. Saying "bottom 15% of businesses at this revenue band"
+    # would be an invented statistic on a tool sold on diagnostic honesty.
+    st.markdown(
+        '<p class="sa-footnote" style="margin:0.5rem 0 0.8rem">'
+        'This is a score against the rubric, not a ranking against peers. '
+        'Peer comparison arrives once enough audits are in.</p>',
+        unsafe_allow_html=True,
+    )
     if band_narrative:
         st.markdown(f"<p>{band_narrative}</p>", unsafe_allow_html=True)
+    # A skipped dimension is excluded from the weighted average, not scored
+    # zero, so it moves the overall score. Say which, and say it near the
+    # score rather than only in the dimension list further down.
+    if r.get("skipped"):
+        _sk = ", ".join(r["skipped"])
+        st.markdown(
+            f'<div class="sa-card" style="border-left:3px solid var(--muted);background:#F7F3EA">'
+            f'<div class="label">Excluded from this score</div>'
+            f'<p style="margin:6px 0 0;font-size:0.95rem">{_html.escape(_sk)} '
+            f'{"was" if len(r["skipped"]) == 1 else "were"} not answered fully enough to score, and '
+            f'{"is" if len(r["skipped"]) == 1 else "are"} excluded from the overall rather than counted as zero. '
+            f'The score above reflects the remaining dimensions only.</p></div>',
+            unsafe_allow_html=True,
+        )
     # Distance to next band (motivational nudge)
     if band_id != "durable":
         # Derive next band from BANDS at runtime to avoid threshold drift
@@ -1718,27 +1853,38 @@ def screen_results():
         st.markdown(
             "The audit scores fifty questions across six weighted dimensions: "
             "Personnel & Org, Accounting & Finance, Software Stack, AI Readiness, "
-            "Sales & Marketing, and Operations & Process. Qualitative questions "
-            "(Likert scale and yes/no) are scored directly. Quantitative questions "
-            "(metrics like turnover rate, days to close, CAC) are scored against "
-            "industry benchmarks at the 25th, 50th, and 75th percentile for your selected industry."
+            "Sales & Marketing, and Operations & Process. Rating questions map 1 to 5 "
+            "onto 0 to 100. Yes/no questions score 100 for yes, 50 for partly, 0 for no. "
+            "Metric questions (turnover, days to close, CAC and the rest) are scored against "
+            "industry benchmarks at the 25th, 50th and 75th percentile for your selected industry."
         )
         st.markdown(
             "Each dimension requires at least 60% of its question weight to be answered "
             "before it receives a score. Dimensions below that threshold are excluded from "
-            "the overall weighted average and marked as Insufficient Data. "
-            "The overall score is the weighted average of all scored dimensions, on a 0 to 100 scale. "
-            "Risks are the answered items with the lowest scores relative to their weight. "
-            "Opportunities are items that are partially in place but have room to improve."
+            "the overall weighted average and marked as Insufficient Data — which means "
+            "skipping a dimension removes it from the score rather than scoring it as zero. "
+            "The overall score is the weighted average of all scored dimensions, 0 to 100."
         )
         st.markdown(
-            "**Band thresholds:** "
-            "Critical (0–40), "
-            "Fragile (41–60), "
-            "Functional (61–75), "
-            "Strong (76–90), "
-            "Durable (91–100)."
+            "**Risks** are answered items scoring below 40. **Opportunities** are items "
+            "between 40 and 75 — partly in place, cheaper to move than a risk, though not "
+            "worth more. Both lists are ordered by the same measure: how many points the "
+            "overall score would gain if that one answer moved to full marks. That "
+            "calculation accounts for the question's weight, how much of its dimension was "
+            "answered, and the dimension's own weight."
         )
+        st.markdown(f"_{BENCHMARK_DISCLOSURE}_")
+        # Derived from BANDS so the stated ranges can never drift from the
+        # half-open intervals actually used. The old hardcoded string said
+        # "Fragile (41-60)" while the code banded everything up to 60.9 as
+        # Fragile, so nine tenths of every band fell outside its stated range.
+        _band_strs = []
+        for _bid, _lo, _hi, _label in BANDS:
+            if _hi >= 101:
+                _band_strs.append(f"{_label} ({_lo} and above)")
+            else:
+                _band_strs.append(f"{_label} ({_lo} to under {_hi})")
+        st.markdown("**Band thresholds:** " + ", ".join(_band_strs) + ".")
         st.markdown(
             f'<p style="font-size:0.82rem;color:var(--muted);margin-top:8px">Rubric version {RUBRIC_VERSION}</p>',
             unsafe_allow_html=True,
@@ -1754,7 +1900,7 @@ def screen_results():
             top_risk_q = r["risks"][0][0]
             top_risk_dim = r["risks"][0][1]
             top_risk_text = (
-                f" The single highest-weighted risk sits in {top_risk_dim['name']}: "
+                f" The largest single lever sits in {top_risk_dim['name']}: "
                 f"<em>&ldquo;{top_risk_q['text']}&rdquo;</em>"
             )
         # The 90-day plan starts from top risks, not necessarily the weakest dimension
@@ -1779,38 +1925,27 @@ def screen_results():
     answers = st.session_state.answers
 
     # --- Biggest lever callout ---
+    # r["risks"] is already ranked by this exact quantity, so the item named
+    # here is always the one with the largest available gain. Before 1.1.0 the
+    # ranking used question weight alone while this callout used the
+    # dimension-weighted lever, so the two disagreed.
     if r["risks"] and scored_dims:
-        _top_q, _top_dim, _top_score = r["risks"][0]
-        # Estimate point gain if this question moved from current score to 1.0
-        _top_dim_def = DIMENSIONS[dim_id_to_idx[_top_dim["id"]]]
-        _top_dim_result = next((d for d in r["dimensions"] if d["id"] == _top_dim["id"]), None)
-        if _top_dim_result and _top_dim_result["score"] is not None:
-            # Question's contribution to dimension score
-            _q_w = float(_top_q.get("weight", 1.0))
-            _dim_answered_w = sum(
-                float(q.get("weight", 1.0))
-                for q in _top_dim_def["questions"]
-                if score_question(q, answers.get(q["id"]), industry)[1]
+        _top_q, _top_dim, _top_score, _top_lever = r["risks"][0]
+        if _top_lever >= 0.5:
+            st.markdown(
+                f'<div class="sa-lever" style="font-size:0.95rem;color:{_band_color};margin:0 0 1rem;padding:10px 14px;'
+                f'background:transparent;border:1px dashed {_band_color}">'
+                f'<strong>Biggest lever.</strong> Fixing '
+                f'<em>&ldquo;{_html.escape(_top_q["text"])}&rdquo;</em> '
+                f'in {_html.escape(_top_dim["name"])} would move the overall score by ~{_top_lever:.1f} points '
+                f'&mdash; more than any other single answer.</div>',
+                unsafe_allow_html=True,
             )
-            if _dim_answered_w > 0:
-                _dim_gain = ((1.0 - _top_score) * _q_w / _dim_answered_w) * 100.0
-                # Dimension's contribution to overall
-                _total_dim_w = sum(d["weight"] for d in scored_dims)
-                _overall_gain = _dim_gain * _top_dim_result["weight"] / _total_dim_w
-                if _overall_gain >= 0.5:
-                    st.markdown(
-                        f'<div style="font-size:0.95rem;color:{_band_color};margin:0 0 1rem;padding:10px 14px;'
-                        f'background:transparent;border:1px dashed {_band_color}">'
-                        f'<strong>Biggest lever.</strong> Fixing '
-                        f'<em>&ldquo;{_html.escape(_top_q["text"])}&rdquo;</em> '
-                        f'in {_html.escape(_top_dim["name"])} could move the overall score by ~{_overall_gain:.1f} points.</div>',
-                        unsafe_allow_html=True,
-                    )
 
     # --- Pre-compute which optional sections will render ---
     _has_opps = bool(r["opportunities"])
-    _has_plan = any(q.get("recommendation") for q, _, _ in r["risks"][:3]) or (
-        _has_opps and any(q.get("recommendation") for q, _, _ in r["opportunities"])
+    _has_plan = any(q.get("recommendation") for q, _, _, _ in r["risks"][:3]) or (
+        _has_opps and any(q.get("recommendation") for q, _, _, _ in r["opportunities"])
     )
 
     # --- Table of contents (rendered via component iframe so JS works) ---
@@ -1828,7 +1963,7 @@ def screen_results():
         '<a href="#" data-target="sa-share">Share</a>',
     ]
     _toc_html = "\n          ".join(_toc_links)
-    _components.html(
+    _frame(
         f"""
         <style>
         body {{ margin:0; padding:0; background:transparent; }}
@@ -1937,7 +2072,7 @@ def screen_results():
         _radar_html = f"""
         <style>
           body {{ margin:0; padding:0; background:transparent; }}
-          .radar-wrap {{ text-align:center; margin:1rem 0 0.5rem; }}
+          .radar-wrap {{ text-align:center; margin:0; }}
           .radar-wrap svg {{ max-width:440px; width:100%; }}
           @media(max-width:500px){{
             .radar-wrap svg {{ max-width:100%; }}
@@ -1945,17 +2080,36 @@ def screen_results():
           }}
         </style>
         <div class="radar-wrap">
-          <svg viewBox="-60 -15 520 430" width="100%" xmlns="http://www.w3.org/2000/svg"
+          <!-- Was "-60 -15 520 430". At 520 units wide the 11px labels
+               overflowed both edges on desktop: "Operations & Process" lost
+               its opening letters and "Accounting & Finance" lost its score
+               entirely. Mobile escaped only because the <=500px rule drops
+               label text to 9px. Widened to fit the labels, then trimmed
+               vertically to the measured ink box so the frame stops
+               reserving empty space above "Dimension scores". -->
+          <svg viewBox="-87 10 574 374" width="100%" xmlns="http://www.w3.org/2000/svg"
                role="img" aria-label="Radar chart of dimension scores: {', '.join(f'{d["name"]} {d["score"]:.0f}' for d in scored_for_radar)}">
             <title>Dimension score radar chart</title>
             {_grid_svg}{_axis_svg}{_data_svg}{_dots_svg}{_labels_svg}
           </svg>
         </div>
         """
-        _components.html(
+        # Height is deterministic, so state it rather than chase it: the SVG
+        # is capped at 440px wide and the viewBox is 574x374, so it renders
+        # 287px tall at the desktop measure. Streamlit fixes the element
+        # container's height from the `height` argument via an emotion class
+        # with !important, which an in-frame script cannot release (verified),
+        # so an autosizing script would shrink the iframe and leave the
+        # container's reserved space behind. 380 was the old value and left
+        # ~300px of dead band above "Dimension scores".
+        _frame(
             f'<div style="background:transparent;margin:0;padding:0">{_radar_html}</div>'
-            '<script>try{var f=window.frameElement;if(f)f.classList.add("sa-radar-iframe")}catch(e){}</script>',
-            height=380,
+            # The class is the print stylesheet's marker: it hides every
+            # component frame except this one. classList.add survives on the
+            # components.html path but NOT under st.iframe — see _frame().
+            '<script>try{var f=window.frameElement;'
+            'if(f)f.classList.add("sa-radar-iframe")}catch(e){}</script>',
+            height=295,
         )
 
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
@@ -1988,12 +2142,21 @@ def screen_results():
                         pass
         bench_line = ""
         if benchmarked_total > 0:
+            # "above" reads as good, but six of these metrics are
+            # lower-is-better: above the median on turnover, days to
+            # close, AR over 60, MTTR, CAC or churn is the bad end.
+            _n_word = "metric" if benchmarked_total == 1 else "metrics"
             if above == benchmarked_total:
-                bench_line = f'<div style="font-size:0.82rem;color:var(--accent);margin-top:4px">{above} of {benchmarked_total} benchmarked metrics at or above industry median</div>'
+                _bc, _bw = "#4A5A32", "at or better than"
             elif at_or_below == benchmarked_total:
-                bench_line = f'<div style="font-size:0.82rem;color:var(--warn);margin-top:4px">{at_or_below} of {benchmarked_total} benchmarked metrics below industry median</div>'
+                _bc, _bw = "var(--warn)", "worse than"
             else:
-                bench_line = f'<div style="font-size:0.82rem;color:var(--muted);margin-top:4px">{above} of {benchmarked_total} benchmarked metrics at or above industry median</div>'
+                _bc, _bw = "var(--muted)", "at or better than"
+            _bn = above if _bw.startswith("at or") else at_or_below
+            bench_line = (
+                f'<div class="sa-bench-line" style="color:{_bc}">'
+                f'{_bn} of {benchmarked_total} benchmarked {_n_word} {_bw} the industry median</div>'
+            )
 
         jump_idx = dim_id_to_idx.get(d["id"])
         if d["score"] is None:
@@ -2017,24 +2180,32 @@ def screen_results():
                 ans = answers.get(q["id"])
                 qs, flagged = score_question(q, ans, industry)
                 _q_short = _html.escape(q.get("text", q["id"])[:40])
+                # #9A8B6E, not var(--hair) #D9CFBC: the old swatch sat at
+                # roughly 1.5:1 against the page background, under the 3:1
+                # minimum for a non-text graphic.
                 if not flagged or qs is None:
-                    _heat_cells.append(f'<span title="{_q_short}: skipped" aria-label="{_q_short}: skipped" style="display:inline-block;width:100%;height:6px;background:var(--hair)"></span>')
+                    _st, _col = "skipped", "#9A8B6E"
                 elif qs >= 0.75:
-                    _heat_cells.append(f'<span title="{_q_short}: strong" aria-label="{_q_short}: strong" style="display:inline-block;width:100%;height:6px;background:#5A6B3F"></span>')
+                    _st, _col = "strong", "#4A5A32"
                 elif qs >= 0.4:
-                    _heat_cells.append(f'<span title="{_q_short}: partial" aria-label="{_q_short}: partial" style="display:inline-block;width:100%;height:6px;background:#B8872E"></span>')
+                    _st, _col = "partial", "#8A6420"
                 else:
-                    _heat_cells.append(f'<span title="{_q_short}: gap" aria-label="{_q_short}: gap" style="display:inline-block;width:100%;height:6px;background:#7A2E20"></span>')
+                    _st, _col = "gap", "#7A2E20"
+                _heat_cells.append(
+                    f'<span title="{_q_short}: {_st}" aria-label="{_q_short}: {_st}" '
+                    f'style="background:{_col}"></span>'
+                )
             _n_cells = len(_heat_cells)
             _heat_strip = (
-                f'<div role="img" aria-label="Per-question score breakdown for {_html.escape(d["name"])}" style="display:grid;grid-template-columns:repeat({_n_cells},1fr);gap:2px;margin:6px 0 4px">'
+                f'<div class="sa-heat" role="img" aria-label="Per-question score breakdown for {_html.escape(d["name"])}" '
+                f'style="grid-template-columns:repeat({_n_cells},1fr)">'
                 + "".join(_heat_cells)
                 + '</div>'
-                + '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:2px">Per-question breakdown: '
-                + '<span style="color:#5A6B3F">&#9632; strong</span> · '
-                + '<span style="color:#B8872E">&#9632; partial</span> · '
-                + '<span style="color:#7A2E20">&#9632; gap</span> · '
-                + '<span style="color:var(--hair)">&#9632; skipped</span></div>'
+                + '<div class="sa-heat-legend">Per-question breakdown: '
+                + '<span style="color:#4A5A32">&#9632;</span> <span class="k">strong</span> · '
+                + '<span style="color:#8A6420">&#9632;</span> <span class="k">partial</span> · '
+                + '<span style="color:#7A2E20">&#9632;</span> <span class="k">gap</span> · '
+                + '<span style="color:#9A8B6E">&#9632;</span> <span class="k">skipped</span></div>'
             )
             st.markdown(
                 f'<div class="sa-card"><div class="label">{d["name"]}</div>'
@@ -2061,8 +2232,27 @@ def screen_results():
         unsafe_allow_html=True,
     )
     if not r["risks"]:
-        st.markdown("<p>No material risks surfaced. This is rare. Double-check the answers with a skeptical eye.</p>", unsafe_allow_html=True)
-    for q, dim, score in r["risks"]:
+        # Two very different situations produce an empty risk list, and the
+        # old copy ("this is rare") only described one of them. Nothing scored
+        # below 40 can equally mean everything landed mid-scale — which is
+        # what a page of neutral ratings and at-median metrics produces.
+        _mid = [t for t in r["opportunities"]]
+        if _mid and (r["overall"] or 0) < 61:
+            st.markdown(
+                "<p>Nothing scored low enough to register as a risk, but little scored high "
+                "either — the answers cluster in the middle. That usually means one of two "
+                "things: the business really is evenly average across the board, or the "
+                "questions were answered defensively. If it is the second, go back and answer "
+                "the uncomfortable ones honestly; a middling score hides more than a bad one.</p>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                "<p>No material risks surfaced. That is rare. Double-check the answers with a "
+                "skeptical eye before you trust it.</p>",
+                unsafe_allow_html=True,
+            )
+    for q, dim, score, _lever in r["risks"]:
         risk = _html.escape(q.get("risk_copy", ""))
         rec = _html.escape(q.get("recommendation", ""))
         st.markdown(
@@ -2081,10 +2271,13 @@ def screen_results():
         st.markdown('<div id="sa-opportunities"></div>', unsafe_allow_html=True)
         st.markdown("## Where the compounding is waiting")
         st.markdown(
-            '<p class="sa-lede" style="font-size:1.05rem">Items that are partially in place. A focused quarter on a few of these usually moves the overall score more than closing a risk.</p>',
+            '<p class="sa-lede" style="font-size:1.05rem">Items that are partly in place. '
+            'Individually these move the score less than closing a risk does &mdash; that is what '
+            'makes them opportunities rather than risks &mdash; but they are already half built, '
+            'so they are usually the cheapest points on the board.</p>',
             unsafe_allow_html=True,
         )
-        for q, dim, score in r["opportunities"]:
+        for q, dim, score, _lever in r["opportunities"]:
             opp = _html.escape(q.get("opportunity_copy", ""))
             rec = _html.escape(q.get("recommendation", ""))
             st.markdown(
@@ -2099,13 +2292,13 @@ def screen_results():
 
     # --- 90-Day Focus Plan ---
     _plan_items = []
-    for q, dim, score in r["risks"][:3]:
+    for q, dim, score, _lever in r["risks"][:3]:
         rec = q.get("recommendation", "")
         if rec:
             _plan_items.append({"dim": dim["name"], "rec": rec, "q": q["text"]})
     # Fill remaining slots from opportunities if fewer than 3 risks
     if len(_plan_items) < 3 and r["opportunities"]:
-        for q, dim, score in r["opportunities"]:
+        for q, dim, score, _lever in r["opportunities"]:
             rec = q.get("recommendation", "")
             if rec and len(_plan_items) < 3:
                 _plan_items.append({"dim": dim["name"], "rec": rec, "q": q["text"]})
@@ -2116,7 +2309,8 @@ def screen_results():
         st.markdown("## 90-Day Focus Plan")
         st.markdown(
             '<p class="sa-lede" style="font-size:1.05rem">'
-            'Three moves, sequenced. The first is the one that unblocks the others.</p>',
+            'Three moves, ordered by how many points each returns to the overall score. '
+            'Start at the top; the cadence below is a suggested rhythm, not a dependency chain.</p>',
             unsafe_allow_html=True,
         )
         _periods = ["Days 1–30", "Days 31–60", "Days 61–90"]
@@ -2158,10 +2352,22 @@ def screen_results():
     )
     _ec = st.session_state.get("email_captured")
     if not _ec:
+        _cap_name = st.text_input("Your name (optional)", key="capture_name", placeholder="First name is enough")
         email_val = st.text_input("Email address", key="capture_email", placeholder="founder@yourcompany.com")
+        st.markdown(
+            '<p class="sa-footnote" style="margin:2px 0 10px">'
+            'Three emails, then nothing. Unsubscribe from any of them. '
+            'We store your email, company name, score band and industry &mdash; '
+            'never your individual answers. '
+            f'<a href="{LINKS["privacy"]}" style="color:var(--accent)">How we handle your data</a>.</p>',
+            unsafe_allow_html=True,
+        )
         if st.button("Send me the action plan", key="btn_capture"):
             if email_val and re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email_val.strip()):
-                _capture_email(email_val, _raw_company, band_label, r["overall"])
+                _capture_email(
+                    email_val.strip(), _raw_company, band_label, r["overall"],
+                    name=(st.session_state.get("capture_name") or "").strip(),
+                )
                 track("report_requested", where="results_footer")
                 st.rerun()
             else:
@@ -2188,49 +2394,45 @@ def screen_results():
     _CTA_COPY = {
         "critical": (
             "A score in this range means the business is carrying structural risk that compounds "
-            "with time, not resolves with it. The next useful step is a read-out call. Thirty minutes. "
+            "with time, not resolves with it. The next useful step is a fit call. Thirty minutes. "
             "The audit in front of us. We will identify which of the top risks is load-bearing "
             "and what a realistic 90-day stabilization looks like."
         ),
         "fragile": (
             "The audit surfaced real gaps, but the business is functioning. The risk is that "
             "these gaps stay invisible until something forces the issue. The next useful step is a "
-            "read-out call. Thirty minutes. The audit in front of us. A pressure-test of the top "
+            "fit call. Thirty minutes. The audit in front of us. A pressure-test of the top "
             "risks and the one move that would actually change the score by next quarter."
         ),
         "functional": (
             "The audit is honest but it is not a plan. A Functional score means the foundation is real "
-            "but the remaining gaps are load-bearing. The next useful step is a read-out call. Thirty "
+            "but the remaining gaps are load-bearing. The next useful step is a fit call. Thirty "
             "minutes. The audit in front of us. We will sequence the two or three moves that would "
             "push the business into durable territory."
         ),
         "strong": (
             "At this level, the remaining gaps are refinements, not emergencies. The leverage is in "
-            "compounding what already works. The next useful step is a read-out call. Thirty minutes. "
+            "compounding what already works. The next useful step is a fit call. Thirty minutes. "
             "The audit in front of us. We will identify which strengths to protect and which "
             "refinements have the highest marginal return."
         ),
         "durable": (
             "A Durable score is rare. The business is structurally sound and the question shifts from "
             "fixing weaknesses to scaling on strength. If you are considering a transaction, preparing "
-            "for a capital event, or expanding into a new vertical, a read-out call sharpens the picture. "
+            "for a capital event, or expanding into a new vertical, a fit call sharpens the picture. "
             "Thirty minutes. The audit in front of us."
         ),
     }
     _cta_text = _CTA_COPY.get(band_id, _CTA_COPY["functional"])
     st.markdown(_cta_text)
     cal_url = CTA["lead_magnet"]["primary_url"]
-    _CTA_LABELS = {
-        "critical": "Book a 30-min structural review",
-        "fragile": "Book a 30-min structural review",
-        "functional": "Book a 30-min structural review",
-        "strong": "Book a 30-min structural review",
-        "durable": "Book a 30-min read-out call",
-    }
-    st.link_button(_CTA_LABELS.get(band_id, "Book a 30-min structural review"), cal_url, use_container_width=False)
+    # One name for the call across button, body copy, share text and Calendly.
+    # "Structural review" collided with the paid Structural Position Review.
+    _cta_label = CTA["lead_magnet"]["primary_label"]
+    st.link_button(_cta_label, _utm(cal_url, f"results_{band_id}", "cta"), use_container_width=False)
     st.markdown(
         '<p style="font-size:0.88rem;color:var(--muted);margin-top:0.8rem">'
-        'Not ready for a call? <a href="https://structuraladvantage.substack.com/" '
+        'Not ready for a call? <a href="' + _utm(LINKS["substack"], f"results_{band_id}", "newsletter") + '" '
         'style="color:var(--accent)">Subscribe to Structural Advantage</a>, '
         'the newsletter behind this audit.</p>',
         unsafe_allow_html=True,
@@ -2267,7 +2469,7 @@ def screen_results():
     if r["risks"]:
         _summary_lines.append("")
         _summary_lines.append("TOP RISKS:")
-        for q, dim, score in r["risks"][:3]:
+        for q, dim, score, _lever in r["risks"][:3]:
             _summary_lines.append(f"  [{dim['name']}] {q['text']}")
     if _plan_items:
         _summary_lines.append("")
@@ -2277,12 +2479,12 @@ def screen_results():
             period = _periods[i] if i < len(_periods) else f"Days {i*30+1}-{(i+1)*30}"
             _summary_lines.append(f"  {period} ({item['dim']}): {item['rec']}")
     _summary_lines.append("")
-    _summary_lines.append(f"Book a 30-min structural review: https://calendly.com/gkholdingsllcva/advisory-intro")
-    _summary_lines.append(f"Take the audit: https://structural-audit.streamlit.app/")
+    _summary_lines.append(f"{CTA['lead_magnet']['primary_label']}: {LINKS['calendly']}")
+    _summary_lines.append(f"Take the audit: {_CANONICAL_URL}/")
     _share_text = "\n".join(_summary_lines)
     # Escape for safe embedding in JS — prevent injection from company names
     _safe_share = json.dumps(_share_text)
-    _components.html(
+    _frame(
         f"""
         <style>
         body {{ margin:0; padding:0; background:transparent; }}
@@ -2308,7 +2510,7 @@ def screen_results():
         "Use your browser's print dialog to save a clean copy. "
         "Works best from desktop."
     )
-    _components.html(
+    _frame(
         """
         <style>
         body { margin:0; padding:0; background:transparent; }
@@ -2341,9 +2543,11 @@ def screen_results():
                 '  .stApp, html, body, [data-testid="stAppViewContainer"] {',
                 '    background: white !important;',
                 '  }',
-                '  section.main > div.block-container {',
+                '  section.stMain > div.block-container {',
                 '    max-width: 100% !important;',
-                '    padding: 0 !important;',
+                  // A little horizontal padding so the report still reads well
+                  // if the visitor prints with page margins set to None.
+                '    padding: 0 0.3cm !important;',
                 '  }',
                 '  iframe:not(.sa-radar-iframe) { display:none !important; }',
                 '  div.stButton, div.stLinkButton { display:none !important; }',
@@ -2352,7 +2556,12 @@ def screen_results():
                 '  .sa-print-footer { display:block !important; }',
                 '}'
               ].join('\\n');
-              pd.head.appendChild(s);
+              // Appended to BODY, not head. The app's base stylesheet is
+              // injected by st.markdown into the body, so a <style> in <head>
+              // loses to it on source order even though both use !important —
+              // which is why the print rules for page background and column
+              // width silently did nothing. Body-appended, they come last.
+              pd.body.appendChild(s);
               // Before print: expand methodology, hide interactive expanders
               pw.addEventListener('beforeprint', function() {
                 var exps = pd.querySelectorAll('[data-testid="stExpander"]');
@@ -2386,17 +2595,27 @@ def screen_results():
     st.markdown(
         "The Structural Advantage Index is the personal companion to this audit. Ten minutes. An operator archetype. "
         "The shape you bring to the work, named. Most operators find the two read differently when held side by side. "
-        "[Open the Index &rarr;](https://structuraladvantageindex.netlify.app/)"
+        f"[Open the Index &rarr;]({_utm(LINKS['index'], 'audit_results', 'cross_tool')})"
     )
 
     # --- Save code (visible, not buried) ---
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     st.markdown("### Save your results")
-    st.markdown("Copy your audit code below, or share a direct link. Use it to resume from any device, or paste it into the comparison tool on a future audit to track your progress.")
+    st.markdown(
+        "Copy your audit code below, or share a direct link. Use it to resume from any device, "
+        "or paste it into the comparison tool on a future audit to track your progress."
+    )
+    st.markdown(
+        f'<p class="sa-footnote">The code contains every answer you gave, and a shared link '
+        f'carries them in the URL. Treat it like the report itself. '
+        f'Rubric {RUBRIC_VERSION}.</p>',
+        unsafe_allow_html=True,
+    )
     _results_code = _encode_state()
     _safe_results_code = json.dumps(_results_code)
+    _safe_canonical = json.dumps(_CANONICAL_URL)
     st.code(_results_code, language=None)
-    _components.html(
+    _frame(
         f"""
         <style>
         body {{ margin:0; padding:0; background:transparent; }}
@@ -2412,7 +2631,7 @@ def screen_results():
         </style>
         <button onclick="navigator.clipboard.writeText({_safe_results_code}).then(function(){{document.getElementById('rcp').textContent='Copied.'}})">
           Copy code
-        </button><button class="link-btn" onclick="var u='https://structural-audit.streamlit.app/?code='+{_safe_results_code};navigator.clipboard.writeText(u).then(function(){{document.getElementById('rcp').textContent='Link copied.'}})">
+        </button><button class="link-btn" onclick="var u={_safe_canonical}+'/?code='+{_safe_results_code};navigator.clipboard.writeText(u).then(function(){{document.getElementById('rcp').textContent='Link copied.'}})">
           Copy link
         </button><span id="rcp" class="ok"></span>
         """,
@@ -2441,6 +2660,13 @@ def screen_results():
                 st.session_state.answers = prev_payload.get("a", {})
                 st.session_state.industry = prev_payload.get("i", current_industry)
                 prev_r = compute_results()
+                _prev_rv = prev_payload.get("rv", "1.0.x")
+                if _prev_rv != RUBRIC_VERSION:
+                    st.warning(
+                        f"That audit was scored on rubric {_prev_rv}; this one is {RUBRIC_VERSION}. "
+                        "Question wording and scoring changed between them, so treat the "
+                        "comparison as directional rather than exact."
+                    )
                 if prev_r["overall"] is not None and r["overall"] is not None:
                     delta = r["overall"] - prev_r["overall"]
                     direction = "up" if delta > 0 else "down" if delta < 0 else "flat"
@@ -2477,7 +2703,7 @@ def screen_results():
                 st.session_state.industry = current_industry
 
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
-    _components.html(
+    _frame(
         """
         <div style="text-align:center;margin:0.5rem 0">
           <a href="#" style="font-family:Inter,sans-serif;font-size:13px;color:#8B6A3F;text-decoration:none;letter-spacing:0.04em"
@@ -2492,7 +2718,7 @@ def screen_results():
     st.markdown(
         '<div class="sa-print-footer" style="display:none;margin-top:2rem;padding-top:1rem;'
         'border-top:1px solid #D9CFBC;font-size:0.8rem;color:#6B6659;text-align:center">'
-        'The Structural Audit &middot; structural-audit.streamlit.app &middot; '
+        'The Structural Audit &middot; ' + _CANONICAL_URL.replace('https://', '') + ' &middot; '
         'Graham Kindermann &middot; GLK Holdings LLC</div>',
         unsafe_allow_html=True,
     )
@@ -2508,13 +2734,15 @@ def screen_results():
                 st.session_state._confirm_new = False
                 for k in ["step", "company", "industry", "revenue", "respondent", "answers", "dim_idx",
                           "headcount", "ebitda_margin", "years_in_op", "owner_hours",
-                          "audit_intent", "email_captured", "gate_declined", "gate_done",
-                          "gate_name", "gate_email", "capture_email", "_ph_sent"]:
+                          "audit_intent", "email_captured", "capture_email", "_ph_sent",
+                          # Without these the new audit inherits the old one's
+                          # start time and reports a nonsense duration.
+                          "_audit_start", "_navigated", "_utm", "_saved_rubric_version"]:
                     if k in st.session_state:
                         del st.session_state[k]
                 _init()
                 # Clear localStorage so stale resume prompt doesn't appear on return
-                _components.html(
+                _frame(
                     """<script>
                     try { window.parent.localStorage.removeItem('sa_audit_state'); } catch(e) {}
                     </script>""",
@@ -2537,7 +2765,9 @@ elif step == "context":
 elif step == "dim":
     screen_dimension()
 elif step == "gate":
-    screen_gate()
+    # Retired in 1.1.0. Save codes written before then can still carry it.
+    st.session_state.step = "results"
+    screen_results()
 elif step == "results":
     screen_results()
 else:
