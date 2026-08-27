@@ -7,32 +7,48 @@
  * "You need to enable JavaScript to run this app." No scraper — LinkedIn, X,
  * Slack, iMessage, WhatsApp, Discord — ever executes the JS that injects the
  * OG tags, so every share of the audit renders as a bare URL with no title,
- * no description and no image. This is true on Streamlit Community Cloud AND
- * on Render; it is a property of the framework, not the host.
+ * no description and no image. It is a property of the framework, not the host.
  *
- * This Worker sits in front of the domain, answers bot requests with a static
- * HTML document carrying the meta tags, and proxies every human request to
- * the app untouched. Humans never see this document; bots never see the app.
+ * This Worker answers bot requests at the document root with a static HTML
+ * document carrying the meta tags. EVERY other request is passed through
+ * untouched by returning `fetch(request)` — no URL rewriting, no header
+ * surgery, no second origin. Cloudflare resolves it against the zone's own
+ * DNS record for this hostname, which is the CNAME to Render.
  *
- * Deploy (Cloudflare dashboard, same account as the Pages site):
+ * That passthrough is deliberate and it is the whole safety argument:
+ *   - There is no hardcoded origin hostname to go stale. An earlier draft of
+ *     this file hardcoded the LEGACY Streamlit Cloud host, which would have
+ *     silently served the old, unmaintained app to every human visitor.
+ *   - Streamlit's websocket (/_stcore/stream) upgrades through Cloudflare
+ *     natively. Reconstructing the request is what breaks WS upgrades.
+ *
+ * PRE-REQUISITE — this Worker does nothing until the DNS record is proxied:
+ *   DNS -> audit.grahamkindermann.com must be **Proxied** (orange cloud).
+ *   It ships as "DNS only", and Worker routes never fire on a grey-cloud
+ *   record. Zone SSL/TLS mode must be Full or Full (strict) — verified Full
+ *   on 2026-08-27. On Flexible, Cloudflare would talk HTTP to Render, Render
+ *   would redirect to HTTPS, and the tool would enter a redirect loop.
+ *
+ * Deploy:
  *   1. Workers & Pages -> Create -> Worker. Paste this file. Deploy.
  *   2. Settings -> Domains & Routes -> Add route:
  *        audit.grahamkindermann.com/*      (zone: grahamkindermann.com)
- *   3. Leave the existing CNAME/proxy for the app in place; this Worker runs
- *      in front of it and calls it via ORIGIN below.
- *   4. Verify:
+ *   3. DNS -> edit the audit CNAME -> Proxy status: Proxied. Save.
+ *   4. Verify, in this order, and roll back at the first failure:
+ *        curl -sI https://audit.grahamkindermann.com/_stcore/health
+ *        curl -A "Mozilla/5.0" -s https://audit.grahamkindermann.com/ | head -5
  *        curl -A "facebookexternalhit/1.1" https://audit.grahamkindermann.com/ | head -40
- *        curl -A "Mozilla/5.0" -sI https://audit.grahamkindermann.com/ | head -5
- *      The first must show <meta property="og:title">; the second must be the
- *      normal app response.
+ *        then load the tool in a browser and answer one question — if the
+ *        websocket is down, the app renders and then hangs, which a curl
+ *        cannot tell you.
+ *      Rollback is one click: set the DNS record back to DNS only.
  *   5. Re-scrape with LinkedIn Post Inspector and the X card validator; both
  *      cache aggressively.
  *
- * The same pattern works unchanged for index. and household. — change ORIGIN
- * and the META block.
+ * The same pattern works unchanged for index. and household. — change the
+ * META block. Both are on Netlify and both are currently DNS-only too.
  */
 
-const ORIGIN = "https://structural-audit.streamlit.app";
 const CANONICAL = "https://audit.grahamkindermann.com";
 
 const META = {
@@ -99,8 +115,8 @@ export default {
     const ua = request.headers.get("user-agent") || "";
     const url = new URL(request.url);
 
-    // Only the document root gets the shim. Static assets, the websocket and
-    // every /_stcore/ call must pass through untouched or the app will not run.
+    // Only the document root gets the shim, and only for a scraper. Static
+    // assets, the websocket and every /_stcore/ call must reach the app.
     const isRoot = url.pathname === "/" || url.pathname === "";
 
     if (isRoot && BOT.test(ua)) {
@@ -115,11 +131,7 @@ export default {
       });
     }
 
-    // Everything else proxies to the app, preserving method, body, headers,
-    // query string and websocket upgrades.
-    const target = new URL(url.pathname + url.search, ORIGIN);
-    const proxied = new Request(target, request);
-    proxied.headers.set("host", new URL(ORIGIN).host);
-    return fetch(proxied);
+    // Everything else: untouched passthrough to the zone's origin.
+    return fetch(request);
   },
 };

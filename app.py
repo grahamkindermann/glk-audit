@@ -1541,7 +1541,18 @@ def render_question(q):
                 "sal_q_cac": "",
             }
             _u = _BENCH_UNITS.get(qid, "")
-            _fmt = lambda v: f"${v:,.0f}" if qid == "sal_q_cac" else f"{v:g}{_u}"
+            # Streamlit's markdown reads a pair of "$" as LaTeX and eats the
+            # text between them. Escape every dollar sign in the caption.
+            # Units that are countable nouns need to drop the "s" at 1.
+            _PLURAL_UNITS = {" tools", " workflows", " days"}
+
+            def _fmt(v, _u=_u, _qid=qid):
+                if _qid == "sal_q_cac":
+                    return f"\\${v:,.0f}"
+                _unit = _u
+                if _unit in _PLURAL_UNITS and float(v) == 1:
+                    _unit = _unit[:-1]
+                return f"{v:g}{_unit}"
             # The three numbers run low-to-high either way, so the good end
             # flips between questions. Say which end is good.
             _dir = "lower is better" if q.get("lower_is_better") else "higher is better"
@@ -1980,13 +1991,52 @@ def screen_results():
         </div>
         <script>
         (function(){{
+          // Chrome silently drops any smooth scroll a sandboxed component
+          // iframe requests on its parent document, so scrollIntoView and
+          // scrollTo({{behavior:'smooth'}}) both no-op here. Setting
+          // scrollTop directly does work, so animate it by hand.
+          function scroller(pd) {{
+            return pd.querySelector('section.stMain') || pd.scrollingElement || pd.documentElement;
+          }}
+          function glide(m, to) {{
+            var from = m.scrollTop;
+            var dist = to - from;
+            if (Math.abs(dist) < 2) {{ m.scrollTop = to; return; }}
+            var dur = Math.min(600, Math.max(220, Math.abs(dist) * 0.35));
+            var t0 = null;
+            var done = false;
+            function step(ts) {{
+              if (done) return;
+              if (t0 === null) t0 = ts;
+              var k = Math.min(1, (ts - t0) / dur);
+              var e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+              m.scrollTop = from + dist * e;
+              if (k < 1) requestAnimationFrame(step);
+              else done = true;
+            }}
+            requestAnimationFrame(step);
+            // rAF is throttled to a standstill in a background tab, so
+            // guarantee the landing regardless of whether the animation ran.
+            setTimeout(function(){{ if (!done) {{ done = true; m.scrollTop = to; }} }}, dur + 80);
+          }}
           document.querySelectorAll('.toc a').forEach(function(a){{
             a.addEventListener('click', function(e){{
               e.preventDefault();
               var id = this.getAttribute('data-target');
               try {{
-                var el = window.parent.document.getElementById(id);
-                if (el) el.scrollIntoView({{behavior:'smooth', block:'start'}});
+                var pd = window.parent.document;
+                var el = pd.getElementById(id);
+                if (!el) return;
+                var m = scroller(pd);
+                // Leave room for this bar, which is sticky at the top.
+                var fr = window.frameElement;
+                var pad = 12;
+                if (fr) {{
+                  var wrap = fr.closest('.element-container') || fr.parentElement;
+                  if (wrap) pad = wrap.getBoundingClientRect().height + 12;
+                }}
+                var to = m.scrollTop + el.getBoundingClientRect().top - m.getBoundingClientRect().top - pad;
+                glide(m, Math.max(0, to));
               }} catch(err) {{}}
             }});
           }});

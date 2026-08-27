@@ -204,7 +204,7 @@ def test_full_run_best_answers_hits_durable():
     # correctly stays hidden.
     assert "90-Day Focus Plan" not in text, "plan must not render without risks or opportunities"
     assert not at.exception, f"exceptions raised: {[str(e.value) for e in at.exception]}"
-    print("PASS  full run, best answers -> gate -> decline -> Durable results")
+    print("PASS  full run, best answers -> Durable results")
 
 def test_full_run_worst_answers_hits_critical():
     at = fresh_app()
@@ -604,6 +604,66 @@ def test_rubric_integrity():
                         f"missing benchmark: ({ind}, {q['id']})"
     print("PASS  rubric integrity: 50 questions, full benchmark coverage")
 
+def _captions_on_dimension(at, dim_index):
+    """Advance a fresh run to one dimension and return its caption strings."""
+    for i in range(dim_index):
+        run_clean(at)
+        click(at, f"dim_next_{i}")
+    return [str(c.value) for c in at.caption]
+
+def test_benchmark_caption_escapes_dollars_and_singularises_units():
+    """Streamlit's markdown reads a matched pair of "$" as LaTeX and swallows
+    the text between them, which turned the CAC benchmark line into a code
+    box. Every dollar in a caption must be backslash-escaped. Separately,
+    several benchmarks sit at 1, so " workflows"/" tools"/" days" have to
+    drop the s."""
+    src = open(APP, encoding="utf-8").read()
+    assert 'f"${v:,.0f}"' not in src, "unescaped $ in the benchmark formatter"
+    assert 'f"\\\\${v:,.0f}"' in src, "CAC benchmark no longer escapes its dollar signs"
+
+    sales_idx = next(i for i, d in enumerate(rubric.DIMENSIONS)
+                     if any(q["id"] == "sal_q_cac" for q in d["questions"]))
+    at = fresh_app()
+    fill_context(at)
+    caps = _captions_on_dimension(at, sales_idx)
+    cac = [c for c in caps if "25th" in c and "Median" in c]
+    assert cac, f"CAC benchmark caption not rendered; captions were {caps}"
+    line = cac[0]
+    assert "\\$" in line, f"dollar signs not escaped in: {line}"
+    assert line.count("$") == line.count("\\$"), f"a naked $ survives in: {line}"
+    print("PASS  benchmark caption escapes every dollar sign")
+
+def test_benchmark_units_are_singular_at_one():
+    """Professional Services sits at 1 AI workflow at the 25th percentile."""
+    ai_idx = next(i for i, d in enumerate(rubric.DIMENSIONS)
+                  if any(q["id"] == "ai_q_num_ai_workflows" for q in d["questions"]))
+    at = fresh_app()
+    click(at, "btn_begin")
+    at.text_input[0].set_value("Test Co")
+    at.selectbox[0].set_value("Professional Services")
+    at.selectbox[1].set_value(REVENUE)
+    at.text_input[1].set_value("Founder / CEO")
+    run_clean(at)
+    click(at, "ctx_next")
+    caps = _captions_on_dimension(at, ai_idx)
+    wf = [c for c in caps if "workflow" in c]
+    assert wf, f"AI workflow benchmark caption not rendered; captions were {caps}"
+    assert "1 workflows" not in wf[0], f"plural at one: {wf[0]}"
+    assert "1 workflow " in wf[0] or wf[0].rstrip().endswith("1 workflow"), \
+        f"expected a singular unit at 1 in: {wf[0]}"
+    print("PASS  benchmark units read singular at one")
+
+def test_toc_scroll_survives_the_sandbox():
+    """Chrome drops any smooth scroll a sandboxed component iframe requests on
+    its parent document, so the old scrollIntoView({behavior:'smooth'}) call
+    made every table-of-contents link a no-op. Verified live on 2026-08-27."""
+    src = open(APP, encoding="utf-8").read()
+    assert "scrollIntoView({{behavior:'smooth'" not in src, \
+        "TOC is back on a smooth scrollIntoView, which a sandboxed iframe cannot do"
+    assert "m.scrollTop = from + dist * e" in src, "TOC scroll animation missing"
+    assert "m.scrollTop = to;" in src, "TOC scroll has no non-animated fallback"
+    print("PASS  TOC scroll does not rely on a sandbox-blocked smooth scroll")
+
 def test_copy_conventions():
     src = open(APP, encoding="utf-8").read()
     # Canonical duration is fifteen to twenty minutes, shared with the site.
@@ -620,6 +680,9 @@ if __name__ == "__main__":
     tests = [
         test_rubric_integrity,
         test_copy_conventions,
+        test_toc_scroll_survives_the_sandbox,
+        test_benchmark_caption_escapes_dollars_and_singularises_units,
+        test_benchmark_units_are_singular_at_one,
         test_no_vendor_or_legacy_hosts,
         test_no_reverse_scored_items,
         test_band_threshold_text_derives_from_bands,
