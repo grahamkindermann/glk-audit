@@ -37,7 +37,6 @@ from rubric import (
     YESNO_PARTIAL_LABEL,
     YESNO_PARTIAL_HINT,
     BRAND,
-    CTA,
     LINKS,
     RUBRIC_VERSION,
 )
@@ -888,7 +887,7 @@ def advance_dim(skipped=False):
     ss.dim_idx += 1
     if ss.dim_idx >= len(DIMENSIONS):
         # No interstitial gate. It closed with "No subscription. No upsell."
-        # one screen before an email capture and a booking CTA, and anyone who
+        # one screen before an email capture, and anyone who
         # declined was asked again on the results page anyway. One ask, on the
         # results page, after the value has been delivered.
         ss.step = "results"
@@ -1251,7 +1250,7 @@ def screen_intro():
     )
     st.markdown(
         '<p style="font-size:0.92rem;color:var(--muted);margin:0 0 1.5rem">'
-        'Built by Graham Kindermann, operational advisor to PE-backed services businesses.</p>',
+        'Built by Graham Kindermann.</p>',
         unsafe_allow_html=True,
     )
     st.markdown("""
@@ -1413,7 +1412,6 @@ def screen_context():
         "General curiosity",
         "Board or investor request",
         "Preparing for a transaction",
-        "Evaluating advisory support",
         "Someone recommended it",
     ]
     _intent_idx = _INTENT_OPTIONS.index(st.session_state.audit_intent) if st.session_state.audit_intent in _INTENT_OPTIONS else None
@@ -2377,12 +2375,6 @@ def screen_results():
                 f'<div style="font-size:0.97rem;color:var(--ink-2)">{item["rec"]}</div></div>',
                 unsafe_allow_html=True,
             )
-        st.markdown(
-            '<p style="font-family:Fraunces,Georgia,serif;font-size:1.05rem;color:var(--ink);'
-            'line-height:1.45;margin:1.5rem 0 0.5rem;font-style:italic">'
-            'This is the plan. The call is where we pressure-test it.</p>',
-            unsafe_allow_html=True,
-        )
 
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
 
@@ -2390,10 +2382,9 @@ def screen_results():
     st.markdown('<div id="sa-followup"></div>', unsafe_allow_html=True)
     st.markdown("## Get the follow-up")
     st.markdown(
-        "Leave an email and we will send three short emails over the next ten days. "
+        "Leave an email and we will send two short emails over the next week. "
         "**Email 1** (day 2): what to do this week with your audit, which dimension to focus first, and how to assign the first fix. "
-        "**Email 2** (day 5): how to read the risks and opportunities section and turn it into a meeting agenda. "
-        "**Email 3** (day 10): when the audit surfaces something bigger than a checklist can handle. That is it."
+        "**Email 2** (day 5): how to read the risks and opportunities section and turn it into a meeting agenda. That is it."
     )
     st.markdown(
         '<p style="font-size:0.88rem;color:var(--accent);margin:0 0 8px">'
@@ -2406,7 +2397,7 @@ def screen_results():
         email_val = st.text_input("Email address", key="capture_email", placeholder="founder@yourcompany.com")
         st.markdown(
             '<p class="sa-footnote" style="margin:2px 0 10px">'
-            'Three emails, then nothing. Unsubscribe from any of them. '
+            'Two emails, then nothing. Unsubscribe from either. '
             'We store your email, company name, score band and industry &mdash; '
             'never your individual answers. '
             f'<a href="{LINKS["privacy"]}" style="color:var(--accent)">How we handle your data</a>.</p>',
@@ -2430,60 +2421,51 @@ def screen_results():
             '<p style="color:#4A5A32;font-weight:600;margin:0 0 4px;font-size:0.95rem">Follow-up queued</p>'
             '<p style="color:#4A5A32;margin:0;font-size:0.9rem">'
             'Check your inbox over the next few days. You will receive a short action plan for this week '
-            'and a note on what to do if the audit surfaces something bigger than a checklist can fix.</p></div>',
+            'and a guide to turning the report into a meeting agenda.</p></div>',
             unsafe_allow_html=True,
         )
         if st.button("Change email", key="btn_change_email"):
             st.session_state.email_captured = None
             st.rerun()
 
-    # --- Call CTA (heavier ask — comes second, band-specific copy) ---
+    # --- Next step (band-specific copy) ---
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     st.markdown('<div id="sa-next"></div>', unsafe_allow_html=True)
     st.markdown("## What to do with this")
-    _CTA_COPY = {
+    _NEXT_STEP_COPY = {
         "critical": (
             "A score in this range means the business is carrying structural risk that compounds "
-            "with time, not resolves with it. The next useful step is a fit call. Thirty minutes. "
-            "The audit in front of us. We will identify which of the top risks is load-bearing "
-            "and what a realistic 90-day stabilization looks like."
+            "with time, not resolves with it. The next useful step is to name one owner for the top "
+            "risk and start on the first item of the 90-day plan this week."
         ),
         "fragile": (
             "The audit surfaced real gaps, but the business is functioning. The risk is that "
-            "these gaps stay invisible until something forces the issue. The next useful step is a "
-            "fit call. Thirty minutes. The audit in front of us. A pressure-test of the top "
-            "risks and the one move that would actually change the score by next quarter."
+            "these gaps stay invisible until something forces the issue. The next useful step is to "
+            "take the top risks to your leadership team and agree on the one move that would "
+            "change the score by next quarter."
         ),
         "functional": (
-            "The audit is honest but it is not a plan. A Functional score means the foundation is real "
-            "but the remaining gaps are load-bearing. The next useful step is a fit call. Thirty "
-            "minutes. The audit in front of us. We will sequence the two or three moves that would "
-            "push the business into durable territory."
+            "A Functional score means the foundation is real but the remaining gaps are load-bearing. "
+            "The next useful step is to sequence the two or three moves that would push the business "
+            "into durable territory."
         ),
         "strong": (
             "At this level, the remaining gaps are refinements, not emergencies. The leverage is in "
-            "compounding what already works. The next useful step is a fit call. Thirty minutes. "
-            "The audit in front of us. We will identify which strengths to protect and which "
-            "refinements have the highest marginal return."
+            "compounding what already works. The next useful step is to decide which strengths to "
+            "protect and which refinements have the highest marginal return."
         ),
         "durable": (
             "A Durable score is rare. The business is structurally sound and the question shifts from "
             "fixing weaknesses to scaling on strength. If you are considering a transaction, preparing "
-            "for a capital event, or expanding into a new vertical, a fit call sharpens the picture. "
-            "Thirty minutes. The audit in front of us."
+            "for a capital event, or expanding into a new vertical, run the audit again first to see "
+            "what has changed."
         ),
     }
-    _cta_text = _CTA_COPY.get(band_id, _CTA_COPY["functional"])
-    st.markdown(_cta_text)
-    cal_url = CTA["lead_magnet"]["primary_url"]
-    # One name for the call across button, body copy, share text and Calendly.
-    # "Structural review" collided with the paid Structural Position Review.
-    _cta_label = CTA["lead_magnet"]["primary_label"]
-    st.link_button(_cta_label, _utm(cal_url, f"results_{band_id}", "cta"), use_container_width=False)
+    st.markdown(_NEXT_STEP_COPY.get(band_id, _NEXT_STEP_COPY["functional"]))
     st.markdown(
         '<p style="font-size:0.88rem;color:var(--muted);margin-top:0.8rem">'
-        'Not ready for a call? <a href="' + _utm(LINKS["substack"], f"results_{band_id}", "newsletter") + '" '
-        'style="color:var(--accent)">Subscribe to Structural Advantage</a>, '
+        'For more, <a href="' + _utm(LINKS["substack"], f"results_{band_id}", "newsletter") + '" '
+        'style="color:var(--accent)">subscribe to Structural Advantage</a>, '
         'the newsletter behind this audit.</p>',
         unsafe_allow_html=True,
     )
@@ -2529,7 +2511,6 @@ def screen_results():
             period = _periods[i] if i < len(_periods) else f"Days {i*30+1}-{(i+1)*30}"
             _summary_lines.append(f"  {period} ({item['dim']}): {item['rec']}")
     _summary_lines.append("")
-    _summary_lines.append(f"{CTA['lead_magnet']['primary_label']}: {LINKS['calendly']}")
     _summary_lines.append(f"Take the audit: {_CANONICAL_URL}/")
     _share_text = "\n".join(_summary_lines)
     # Escape for safe embedding in JS — prevent injection from company names

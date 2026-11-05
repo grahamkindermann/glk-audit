@@ -9,7 +9,7 @@ To change the product's behavior, edit (in order of how often you'll touch it):
     1. Question text / weights  : inside DIMENSIONS
     2. Copy (risk / opp / rec)  : inside each question
     3. BANDS / thresholds       : scoring tier boundaries
-    4. CTA / BRAND              : report framing
+    4. BRAND                    : report framing
 """
 
 # ---------------------------------------------------------------------------
@@ -30,28 +30,10 @@ BRAND = {
     "prepared_by": "Prepared by Graham Kindermann · GLK Holdings LLC · graham@grahamkindermann.com",
 }
 
-# ---------------------------------------------------------------------------
-# CTA blocks
-# ---------------------------------------------------------------------------
-# The label here is the single source of truth for what the call is called:
-# it drives the results button and the shareable summary. Keep it in step with
-# the Calendly event title. UTMs are not stored here — app.py's _utm() stamps
-# them at click time with the screen or band that produced the click.
-CTA = {
-    "lead_magnet": {
-        "headline": "Ready for the conversation behind the score?",
-        "primary_label": "Book a 30-minute fit call",
-        "primary_url":   "https://calendly.com/gkholdingsllcva/advisory-intro",
-        "secondary_label": "Subscribe to Structural Advantage",
-        "secondary_url":   "https://structuraladvantage.substack.com/",
-    },
-}
-
 # Companion tools, on owned subdomains. Never link the vendor hosts.
 LINKS = {
     "index":     "https://index.grahamkindermann.com/",
     "substack":  "https://structuraladvantage.substack.com/",
-    "calendly":  "https://calendly.com/gkholdingsllcva/advisory-intro",
     "privacy":   "https://grahamkindermann.com/privacy",
 }
 

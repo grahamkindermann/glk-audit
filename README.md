@@ -146,5 +146,3 @@ Quantitative questions need a matching entry in the `BENCHMARKS` dict, keyed by 
 ## Positioning
 
 This tool is the B2B counterpart to the Structural Advantage Index at `index.grahamkindermann.com`. All tool links live on owned subdomains; never link a `*.netlify.app` or `*.streamlit.app` host from user-facing copy (`test_no_vendor_or_legacy_hosts` enforces this). The intended user journey is Index first, Audit second. Keep the cross-links current in both directions. The Index links here from its results screen. This app links back to the Index from its intro and its results screen.
-
-If you ever want to sell a paid deep audit, do not bolt it onto this free tool. Run the paid engagement on email, starting with a fit call. Keep this tool free and comprehensive as the trust-builder.
