@@ -776,7 +776,6 @@ def _encode_state():
         "oh": ss.get("owner_hours", ""),
         "ai": ss.get("audit_intent", ""),
         "ts": ss.get("_audit_start", None),
-        "ec": ss.get("email_captured", None),
         "rv": RUBRIC_VERSION,
     }
     raw = json.dumps(payload, separators=(",", ":")).encode()
@@ -816,9 +815,6 @@ def _decode_state(code):
         _ts = payload.get("ts")
         if _ts is not None:
             ss["_audit_start"] = _ts
-        _ec = payload.get("ec")
-        if _ec is not None:
-            ss["email_captured"] = _ec
         # Codes written before 1.1.0 carry no version. Questions can be
         # reworded between rubrics (sal_02 was reverse-scored until 1.1.0), so
         # an old code can score differently than it did when it was saved.
@@ -886,10 +882,8 @@ def advance_dim(skipped=False):
         )
     ss.dim_idx += 1
     if ss.dim_idx >= len(DIMENSIONS):
-        # No interstitial gate. It closed with "No subscription. No upsell."
-        # one screen before an email capture, and anyone who
-        # declined was asked again on the results page anyway. One ask, on the
-        # results page, after the value has been delivered.
+        # No interstitial gate and no email ask: the last dimension goes
+        # straight to the full results.
         ss.step = "results"
     st.rerun()
 
@@ -1075,7 +1069,7 @@ def compute_results():
 # Silent no-op without a POSTHOG_PROJECT_TOKEN (env, secrets, or .env).
 # Each event fires at most once per session, so reruns from widget
 # interaction never inflate the funnel. The numbers this exists to answer:
-# starts, per-dimension completion, drop-off, results views, capture rate.
+# starts, per-dimension completion, drop-off, results views.
 def track(event: str, once_key: str = None, **props):
     ss = st.session_state
     key = once_key or event
@@ -1103,55 +1097,6 @@ def track(event: str, once_key: str = None, **props):
         )
     except Exception:
         pass
-
-# ---------------------------------------------------------------------------
-# Email capture (Loops API)
-# ---------------------------------------------------------------------------
-def _capture_email(email: str, company: str, band: str, score: float, name: str = ""):
-    """Send lead to Loops for nurture drip. Fails silently — no error shown to user."""
-    api_key = _get_conf("LOOPS_API_KEY")
-    if not api_key:
-        # No key configured. Mark it soft_fail rather than returning silently:
-        # leaving email_captured unset made the results page re-render the
-        # capture form, so the visitor was asked a second time with no hint
-        # that anything had gone wrong.
-        st.session_state.email_captured = "soft_fail"
-        return
-    try:
-        payload = {
-            "email": email,
-            "source": "structural_audit",
-            "company": company,
-            "auditBand": band,
-            "auditScore": round(score, 1),
-            "auditIntent": st.session_state.get("audit_intent", ""),
-        }
-        if name:
-            payload["firstName"] = name.split(" ")[0].strip()
-            payload["fullName"] = name.strip()
-        resp = requests.post(
-            "https://app.loops.so/api/v1/contacts/create",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
-            timeout=8,
-        )
-        # Fire the event for the drip sequence.
-        # Contact creation returns 409 for existing contacts — that's fine,
-        # we still want to trigger the drip. Only true failures (5xx, timeout)
-        # should soft-fail.
-        if resp.status_code < 300 or resp.status_code == 409:
-            requests.post(
-                "https://app.loops.so/api/v1/events/send",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"email": email, "eventName": "audit_completed"},
-                timeout=8,
-            )
-            st.session_state.email_captured = True
-        else:
-            st.session_state.email_captured = "soft_fail"
-    except Exception:
-        st.session_state.email_captured = "soft_fail"
-
 
 # ---------------------------------------------------------------------------
 # Screens
@@ -1250,7 +1195,7 @@ def screen_intro():
     )
     st.markdown(
         '<p style="font-size:0.92rem;color:var(--muted);margin:0 0 1.5rem">'
-        'Built by Graham Kindermann.</p>',
+        f'Built by Graham Kindermann. <a href="{LINKS["privacy"]}" style="color:var(--accent)">Privacy</a>.</p>',
         unsafe_allow_html=True,
     )
     st.markdown("""
@@ -1967,7 +1912,6 @@ def screen_results():
     if _has_plan:
         _toc_links.append('<a href="#" data-target="sa-plan">90-Day Plan</a>')
     _toc_links += [
-        '<a href="#" data-target="sa-followup">Get the follow-up</a>',
         '<a href="#" data-target="sa-next">Next step</a>',
         '<a href="#" data-target="sa-share">Share</a>',
     ]
@@ -2376,58 +2320,6 @@ def screen_results():
                 unsafe_allow_html=True,
             )
 
-    st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
-
-    # --- Email capture (lighter ask, higher conversion) ---
-    st.markdown('<div id="sa-followup"></div>', unsafe_allow_html=True)
-    st.markdown("## Get the follow-up")
-    st.markdown(
-        "Leave an email and we will send two short emails over the next week. "
-        "**Email 1** (day 2): what to do this week with your audit, which dimension to focus first, and how to assign the first fix. "
-        "**Email 2** (day 5): how to read the risks and opportunities section and turn it into a meeting agenda. That is it."
-    )
-    st.markdown(
-        '<p style="font-size:0.88rem;color:var(--accent);margin:0 0 8px">'
-        'Most companies that take the audit never act on it. The follow-up is designed to change that.</p>',
-        unsafe_allow_html=True,
-    )
-    _ec = st.session_state.get("email_captured")
-    if not _ec:
-        _cap_name = st.text_input("Your name (optional)", key="capture_name", placeholder="First name is enough")
-        email_val = st.text_input("Email address", key="capture_email", placeholder="founder@yourcompany.com")
-        st.markdown(
-            '<p class="sa-footnote" style="margin:2px 0 10px">'
-            'Two emails, then nothing. Unsubscribe from either. '
-            'We store your email, company name, score band and industry &mdash; '
-            'never your individual answers. '
-            f'<a href="{LINKS["privacy"]}" style="color:var(--accent)">How we handle your data</a>.</p>',
-            unsafe_allow_html=True,
-        )
-        if st.button("Send me the action plan", key="btn_capture"):
-            if email_val and re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email_val.strip()):
-                _capture_email(
-                    email_val.strip(), _raw_company, band_label, r["overall"],
-                    name=(st.session_state.get("capture_name") or "").strip(),
-                )
-                track("report_requested", where="results_footer")
-                st.rerun()
-            else:
-                st.warning("Please enter a valid email address.")
-    elif _ec == "soft_fail":
-        st.info("We noted your request. If you do not hear from us within 24 hours, reach out directly.")
-    else:
-        st.markdown(
-            '<div style="background:#E8EAE0;border:1px solid #5A6B3F;padding:16px 20px;margin:0.5rem 0">'
-            '<p style="color:#4A5A32;font-weight:600;margin:0 0 4px;font-size:0.95rem">Follow-up queued</p>'
-            '<p style="color:#4A5A32;margin:0;font-size:0.9rem">'
-            'Check your inbox over the next few days. You will receive a short action plan for this week '
-            'and a guide to turning the report into a meeting agenda.</p></div>',
-            unsafe_allow_html=True,
-        )
-        if st.button("Change email", key="btn_change_email"):
-            st.session_state.email_captured = None
-            st.rerun()
-
     # --- Next step (band-specific copy) ---
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
     st.markdown('<div id="sa-next"></div>', unsafe_allow_html=True)
@@ -2639,7 +2531,8 @@ def screen_results():
     st.markdown(
         f'<p class="sa-footnote">The code contains every answer you gave, and a shared link '
         f'carries them in the URL. Treat it like the report itself. '
-        f'Rubric {RUBRIC_VERSION}.</p>',
+        f'Rubric {RUBRIC_VERSION}. '
+        f'<a href="{LINKS["privacy"]}" style="color:var(--accent)">How we handle your data</a>.</p>',
         unsafe_allow_html=True,
     )
     _results_code = _encode_state()
@@ -2765,7 +2658,7 @@ def screen_results():
                 st.session_state._confirm_new = False
                 for k in ["step", "company", "industry", "revenue", "respondent", "answers", "dim_idx",
                           "headcount", "ebitda_margin", "years_in_op", "owner_hours",
-                          "audit_intent", "email_captured", "capture_email", "_ph_sent",
+                          "audit_intent", "_ph_sent",
                           # Without these the new audit inherits the old one's
                           # start time and reports a nonsense duration.
                           "_audit_start", "_navigated", "_utm", "_saved_rubric_version"]:

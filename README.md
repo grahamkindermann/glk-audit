@@ -23,15 +23,13 @@ Set these in Streamlit Cloud secrets, environment variables, or a local `.env`
 file (gitignored):
 
 ```
-LOOPS_API_KEY          = "..."   # email capture -> Loops nurture drip
 POSTHOG_PROJECT_TOKEN  = "..."   # funnel analytics
 POSTHOG_HOST           = "https://us.i.posthog.com"
 ```
 
 Funnel events fired (once per session each): `audit_started`,
 `context_completed`, `dimension_completed` (per dimension, with a `skipped`
-flag), `gate_viewed`, `report_requested`, `gate_declined`, `results_viewed`,
-`audit_resumed`. Review the funnel monthly; if any dimension bleeds more than
+flag), `results_viewed`, `audit_resumed`. Review the funnel monthly; if any dimension bleeds more than
 20 percent of takers, tighten its question count.
 
 ## Testing
@@ -43,9 +41,8 @@ python3 test_app.py
 ```
 
 It drives the full fifty-question flow end to end (intro, context, all six
-dimensions, the gate, results), checks scoring bounds on best and worst
-answer sets, verifies the Loops payload, and round-trips the save/resume
-codes.
+dimensions, results), checks scoring bounds on best and worst answer sets,
+confirms there is no email step, and round-trips the save/resume codes.
 
 ## Run it locally
 

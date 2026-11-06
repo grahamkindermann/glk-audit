@@ -17,8 +17,6 @@ services:
         value: "0"         # not used on Render; only meaningful on the legacy Streamlit Cloud app
       # Set these in the dashboard (sync: false keeps values out of the repo).
       # Same names the app reads via _get_conf():
-      - key: LOOPS_API_KEY
-        sync: false
       - key: POSTHOG_PROJECT_TOKEN
         sync: false
       - key: POSTHOG_HOST

@@ -21,7 +21,7 @@ custom-domain canonical, which is what you want scrapers to see going forward.)
 ## Step 2 — Render (~10 min)
 1. render.com → New + → **Blueprint** → select `grahamkindermann/glk-audit`.
 2. It reads `render.yaml`. Confirm plan **Starter** (always-on, ~$7/mo).
-3. In the service → Environment, set values for `LOOPS_API_KEY`,
+3. In the service → Environment, set values for
    `POSTHOG_PROJECT_TOKEN`, `POSTHOG_HOST` (copy from Streamlit Cloud
    → App settings → Secrets).
 4. Deploy; wait for healthy. Test the `onrender.com` URL end-to-end

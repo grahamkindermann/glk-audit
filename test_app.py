@@ -6,10 +6,10 @@ Run before every push:
     python3 test_app.py
 
 Drives the real Streamlit app headlessly (streamlit.testing.v1.AppTest):
-the full fifty-question flow, the soft gate, both scoring extremes, the
-insufficient-data path, save/resume code round-trips, and the funnel
-analytics event sequence. Network calls are stubbed; nothing leaves the
-machine and no test data pollutes PostHog or Loops.
+the full fifty-question flow, both scoring extremes, the insufficient-data
+path, save/resume code round-trips, and the funnel analytics event sequence.
+Network calls are stubbed; nothing leaves the machine and no test data
+pollutes PostHog.
 """
 
 import base64
@@ -26,9 +26,8 @@ APP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.py")
 INDUSTRY = "SaaS"
 REVENUE = "$3M to $10M"
 
-# Force both integrations onto the stubbed-network path so the capture and
-# analytics code runs end to end without touching the wire.
-os.environ["LOOPS_API_KEY"] = "test_key_never_used_on_wire"
+# Force analytics onto the stubbed-network path so the code runs end to end
+# without touching the wire.
 os.environ["POSTHOG_PROJECT_TOKEN"] = "test_token_never_used_on_wire"
 os.environ["POSTHOG_HOST"] = "https://posthog.invalid"
 
@@ -179,7 +178,6 @@ def ss_get(at, key, default=None):
 RESULTS_SECTIONS = (
     "Dimension scores",
     "What is load-bearing right now",
-    "Get the follow-up",
     "What to do with this",
     "Share with your team",
     "Save your results",
@@ -191,7 +189,7 @@ def test_full_run_best_answers_hits_durable():
     fill_context(at)
     fill_all_dimensions(at, best_answer)
     # The interstitial gate was retired in 1.1.0: the last dimension goes
-    # straight to the full results, and the single email ask lives there.
+    # straight to the full results.
     assert at.session_state["step"] == "results", f"expected results, got {at.session_state['step']}"
     text = page_text(at)
     assert "The audit is scored." not in text, "the retired gate screen came back"
@@ -218,41 +216,39 @@ def test_full_run_worst_answers_hits_critical():
     assert not at.exception
     print("PASS  full run, worst answers -> Critical results")
 
-def test_results_email_optin_reaches_loops_with_name():
+def test_no_email_step():
+    """v1.1.3 removed the email step: nothing may ask for an address or call Loops."""
     SENT.clear()
     at = fresh_app()
-    fill_context(at, company="Optin Co")
+    fill_context(at, company="No Email Co")
     fill_all_dimensions(at, best_answer)
     assert at.session_state["step"] == "results"
-    at.text_input(key="capture_name").set_value("Graham Kindermann")
-    at.text_input(key="capture_email").set_value("test@example.com")
-    click(at, "btn_capture")
-    assert ss_get(at, "email_captured") is True
-    loops_calls = [p for p in SENT if "loops.so" in p["url"] and p["json"] and "email" in p["json"]]
-    assert loops_calls, "no Loops contact call recorded"
-    payload = loops_calls[0]["json"]
-    assert payload["firstName"] == "Graham", f"firstName wrong: {payload}"
-    assert payload["company"] == "Optin Co"
     text = page_text(at)
-    assert "Follow-up queued" in text, "footer should confirm the follow-up"
-    assert not any(b.key == "btn_capture" for b in at.button), \
-        "the form must not re-render after a successful capture"
+    for retired in ("Get the follow-up", "Follow-up queued", "Send me the action plan",
+                    "Two emails", "Email address", "Unsubscribe"):
+        assert retired not in text, f"retired email copy still on the results page: {retired}"
+    assert not any(i.key in ("capture_email", "capture_name") for i in at.text_input), \
+        "an email field came back"
+    assert not any(b.key == "btn_capture" for b in at.button), "the capture button came back"
+    assert not [p for p in SENT if "loops.so" in p["url"]], "something called Loops"
+    src = open(APP, encoding="utf-8").read()
+    for term in ("loops.so", "LOOPS_API_KEY", "audit_completed", "email_captured"):
+        assert term not in src, f"email integration still in app.py: {term}"
+    assert 'LINKS["privacy"]' in src, "the privacy page must stay linked from the tool"
     assert not at.exception
-    print("PASS  results opt-in reaches Loops with name; confirms, no re-ask")
+    print("PASS  no email step: no field, no button, no Loops call; privacy still linked")
 
-def test_results_rejects_invalid_email():
-    at = fresh_app()
-    fill_context(at)
-    fill_all_dimensions(at, best_answer)
-    at.text_input(key="capture_email").set_value("not-an-email")
-    # Click WITHOUT the usual trailing neutral run: the warning is rendered by
-    # the click's own script execution and is washed out by the next one.
-    _heal_stale_nodes(at)
-    at.button(key="btn_capture").click().run()
-    assert not ss_get(at, "email_captured"), "invalid email must not be captured"
-    assert any("valid email" in str(w.value) for w in at.warning), "no validation warning shown"
-    assert any(b.key == "btn_capture" for b in at.button), "form must stay open for a retry"
-    print("PASS  results form rejects an invalid email and stays open")
+def test_old_save_code_with_capture_flag_still_resumes():
+    """Codes saved before v1.1.3 carry an "ec" key. It must be ignored, not fatal."""
+    payload = {"s": "results", "c": "Old Code Co", "i": INDUSTRY, "r": REVENUE, "p": "", "d": 0,
+               "a": {}, "ec": True, "rv": rubric.RUBRIC_VERSION}
+    code = base64.urlsafe_b64encode(zlib.compress(json.dumps(payload).encode())).decode().rstrip("=")
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.query_params["code"] = code
+    at.run()
+    assert not at.exception, f"old code raised: {[str(e.value) for e in at.exception]}"
+    assert "email_captured" not in at.session_state, "the capture flag was restored"
+    print("PASS  a pre-1.1.3 save code with the capture flag still loads")
 
 def test_insufficient_data_path():
     at = fresh_app()
@@ -693,8 +689,8 @@ if __name__ == "__main__":
         test_css_selectors_match_current_streamlit,
         test_full_run_best_answers_hits_durable,
         test_full_run_worst_answers_hits_critical,
-        test_results_email_optin_reaches_loops_with_name,
-        test_results_rejects_invalid_email,
+        test_no_email_step,
+        test_old_save_code_with_capture_flag_still_resumes,
         test_insufficient_data_path,
         test_save_code_roundtrip_including_mod4_lengths,
         test_shared_link_shows_python_banner,
