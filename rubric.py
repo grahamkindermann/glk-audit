@@ -33,7 +33,6 @@ BRAND = {
 # Companion tools, on owned subdomains. Never link the vendor hosts.
 LINKS = {
     "index":     "https://index.grahamkindermann.com/",
-    "substack":  "https://structuraladvantage.substack.com/",
     "privacy":   "https://grahamkindermann.com/privacy",
 }
 

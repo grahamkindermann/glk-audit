@@ -238,6 +238,22 @@ def test_no_email_step():
     assert not at.exception
     print("PASS  no email step: no field, no button, no Loops call; privacy still linked")
 
+def test_no_newsletter_link():
+    """v1.1.4 removed the Substack sentence: the posts are unpublished, so nothing may send readers there."""
+    SENT.clear()
+    at = fresh_app()
+    fill_context(at, company="No Newsletter Co")
+    fill_all_dimensions(at, best_answer)
+    assert at.session_state["step"] == "results"
+    text = page_text(at)
+    for retired in ("subscribe to Structural Advantage", "the newsletter behind this audit", "substack.com"):
+        assert retired not in text, f"retired newsletter copy still on the results page: {retired}"
+    assert "What to do with this" in text, "the next-step section must stay"
+    assert "substack" not in rubric.LINKS, "the Substack link is back in rubric.LINKS"
+    assert 'LINKS["substack"]' not in open(APP, encoding="utf-8").read()
+    assert not at.exception
+    print("PASS  no newsletter link: results page and links table are clear of Substack")
+
 def test_old_save_code_with_capture_flag_still_resumes():
     """Codes saved before v1.1.3 carry an "ec" key. It must be ignored, not fatal."""
     payload = {"s": "results", "c": "Old Code Co", "i": INDUSTRY, "r": REVENUE, "p": "", "d": 0,
@@ -690,6 +706,7 @@ if __name__ == "__main__":
         test_full_run_best_answers_hits_durable,
         test_full_run_worst_answers_hits_critical,
         test_no_email_step,
+        test_no_newsletter_link,
         test_old_save_code_with_capture_flag_still_resumes,
         test_insufficient_data_path,
         test_save_code_roundtrip_including_mod4_lengths,

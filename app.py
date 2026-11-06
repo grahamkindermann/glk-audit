@@ -2354,13 +2354,6 @@ def screen_results():
         ),
     }
     st.markdown(_NEXT_STEP_COPY.get(band_id, _NEXT_STEP_COPY["functional"]))
-    st.markdown(
-        '<p style="font-size:0.88rem;color:var(--muted);margin-top:0.8rem">'
-        'For more, <a href="' + _utm(LINKS["substack"], f"results_{band_id}", "newsletter") + '" '
-        'style="color:var(--accent)">subscribe to Structural Advantage</a>, '
-        'the newsletter behind this audit.</p>',
-        unsafe_allow_html=True,
-    )
 
     # --- Share summary (plain text for forwarding to team) ---
     st.markdown("<hr class='sa-rule'/>", unsafe_allow_html=True)
